@@ -1,0 +1,24 @@
+# .npmrc pins an internal Artifactory registry; an auth token is appended to
+# that same file, so keep credentials and build output out of any copy.
+.env
+node_modules/
+logs/
+run/
+web/native-sdk.js
+
+# The assistant's gateway credential. Lives at ~/gateway.env on a host, never
+# in the tree -- see docs/guides/assistant.md.
+gateway.env
+*.env
+!.env.example
+
+# Uploaded USD assets: user data, often hundreds of megabytes, and the catalog
+# that indexes them is written at runtime.
+/uploads/
+*.part
+
+__pycache__/
+*.pyc
+
+# Machine-specific Windows/WSL deployment values.
+deploy/windows/local.bat

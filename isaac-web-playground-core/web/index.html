@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Isaac Web Playground · Stage 2</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-wrap">
+      <div class="brand-mark">I</div>
+      <div>
+        <strong>Isaac Web Playground</strong>
+        <span id="environmentBadge" class="environment-badge">Starting...</span>
+      </div>
+    </div>
+    <div class="status-row" aria-label="Playground status">
+      <span class="status-pill ok"><i></i>Web</span>
+      <span id="surfaceStatus" class="status-pill"><i></i>Simulation</span>
+      <span id="robotStatus" class="status-pill"><i></i>Robot</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section id="viewerShell" class="viewer-shell" aria-label="Simulation world">
+      <video id="remote-video" class="stream-surface" playsinline autoplay muted tabindex="0"></video>
+      <audio id="remote-audio" muted></audio>
+      <canvas id="mockCanvas" class="stream-surface" hidden></canvas>
+      <img id="mjpegSurface" class="stream-surface" hidden alt="Isaac Sim viewport" />
+      <div id="robotInputShield" class="robot-input-shield" hidden aria-hidden="true"></div>
+
+      <div class="viewer-topline">
+        <div>
+          <span id="sceneName" class="scene-title">No session</span>
+          <span id="sceneSubtitle" class="scene-subtitle">Choose a scene and robot</span>
+        </div>
+        <div class="viewer-actions">
+          <button id="streamSwitch" class="ghost-mini" hidden>Stream: -</button>
+          <span id="modeChip" class="mode-chip">Camera</span>
+          <button id="changeSetupTop" class="ghost-mini">Change setup</button>
+        </div>
+      </div>
+
+      <div id="streamOverlay" class="viewer-overlay">
+        <div class="offline-card">
+          <div class="offline-icon">RTC</div>
+          <h1 id="streamTitle">Preparing simulation</h1>
+          <p id="streamText">The native stream will appear directly inside this playground.</p>
+          <div class="overlay-actions">
+            <button id="connectStream" class="primary">Connect stream</button>
+            <button id="disconnectStream" class="secondary" disabled>Disconnect</button>
+          </div>
+          <button id="useCompatStream" class="text-button compat-switch">Use compatibility stream (works through VPN)</button>
+          <span id="streamEndpoint" class="mono"></span>
+        </div>
+      </div>
+
+      <div id="streamWarning" class="stream-warning" hidden></div>
+      <div id="focusHint" class="focus-hint">Camera · WASD move · RMB drag rotate · wheel zoom</div>
+      <div id="mockLegend" class="mock-legend" hidden>
+        <span><i class="legend-dot robot"></i>Robot</span>
+        <span><i class="legend-dot target"></i>Goal</span>
+        <span><i class="legend-dot obstacle"></i>Obstacle</span>
+      </div>
+    </section>
+
+    <aside class="control-panel">
+      <section id="assistantPanel" class="assistant-panel">
+        <div class="section-heading">
+          <div><div class="eyebrow">ASSISTANT</div><h2>Tell it what to do</h2></div>
+          <button id="assistantReset" class="text-button">Clear</button>
+        </div>
+        <div id="assistantLog" class="assistant-log"></div>
+        <form id="assistantForm" class="assistant-form">
+          <input id="assistantInput" placeholder="Load the warehouse with Carter and drive forward two metres" autocomplete="off" />
+          <button id="assistantSend" class="primary" type="submit">SEND</button>
+        </form>
+        <div id="assistantHint" class="assistant-hint"></div>
+      </section>
+
+      <section class="session-card">
+        <div class="section-heading">
+          <div><div class="eyebrow">ACTIVE SESSION</div><h2 id="sessionTitle">No session</h2></div>
+          <span id="previewBadge" class="preview-badge">Preview</span>
+        </div>
+        <div class="session-summary">
+          <div><span>Scene</span><strong id="sceneSummary">-</strong></div>
+          <div><span>Robot</span><strong id="robotSummary">-</strong></div>
+        </div>
+        <button id="changeSetup" class="secondary wide">CHANGE SCENE / ROBOT</button>
+      </section>
+
+      <section class="control-hero">
+        <div class="section-heading">
+          <div><div class="eyebrow">CONTROL MODE</div><h2>What do you want to drive?</h2></div>
+        </div>
+        <div class="segmented" role="group" aria-label="Control mode">
+          <button class="mode active" data-mode="camera"><span class="mode-icon">◉</span>Camera</button>
+          <button class="mode" data-mode="robot"><span class="mode-icon">◆</span>Robot</button>
+        </div>
+        <div id="modeHelp" class="mode-help">Move around the world with WASD.</div>
+      </section>
+
+      <section class="keyboard-section">
+        <div class="control-row-title"><span class="eyebrow">KEYBOARD</span><span id="keyboardMeaning">Move camera</span></div>
+        <div class="key-grid six" aria-label="Robot controls">
+          <button id="keyQ" class="key auxiliary" data-key="q">Q<small>strafe</small></button>
+          <button class="key" data-key="w">W</button>
+          <button id="keyE" class="key auxiliary" data-key="e">E<small>strafe</small></button>
+          <button class="key" data-key="a">A</button>
+          <button class="key" data-key="s">S</button>
+          <button class="key" data-key="d">D</button>
+        </div>
+        <div id="lateralHint" class="lateral-hint">Q / E lateral motion is available only on holonomic robots.</div>
+      </section>
+
+      <section id="robotControls" class="robot-controls muted-controls">
+        <div class="control-row-title"><span class="eyebrow">UNIVERSAL MOTION</span><span id="robotReadyText">Waiting</span></div>
+        <div id="capabilityRow" class="capability-row"></div>
+        <div class="settings">
+          <label><span>Forward speed <strong id="linearValue">0.50 m/s</strong></span><input id="linearSpeed" type="range" min="0.1" max="1.5" value="0.5" step="0.1" /></label>
+          <label id="lateralSetting"><span>Lateral speed <strong id="lateralValue">0.40 m/s</strong></span><input id="lateralSpeed" type="range" min="0.1" max="1.5" value="0.4" step="0.1" /></label>
+          <label><span>Turn speed <strong id="angularValue">0.80 rad/s</strong></span><input id="angularSpeed" type="range" min="0.2" max="2.0" value="0.8" step="0.1" /></label>
+        </div>
+        <div class="action-row"><button id="stop" class="stop">STOP</button><button id="resetRobot" class="reset">RESET ROBOT</button></div>
+      </section>
+
+      <section id="policyControls" class="robot-controls" hidden>
+        <div class="control-row-title"><span class="eyebrow">POLICY</span><span id="policyName">-</span></div>
+        <p class="hint" id="policyHint">This robot walks because a network drives its joints. W and S ask it to
+          walk; it stands by itself when nothing is asked.</p>
+        <div class="action-row">
+          <button id="kickRight" class="reset">KICK RIGHT</button>
+          <button id="kickLeft" class="reset">KICK LEFT</button>
+        </div>
+        <div class="action-row">
+          <button id="resetBall" class="reset">BALL TO ROBOT</button>
+          <button id="followToggle" class="reset">CAMERA: FOLLOWING</button>
+        </div>
+        <div id="policyStats" class="hint"></div>
+      </section>
+
+      <section id="jointControls" class="joint-controls" hidden>
+        <div class="control-row-title"><span class="eyebrow">JOINTS</span><span id="jointCount">-</span></div>
+        <div id="jointSliders" class="joint-sliders"></div>
+        <div class="action-row"><button id="resetJoints" class="reset">HOME POSITION</button></div>
+      </section>
+
+      <section id="teleopPanel" class="teleop-panel" hidden>
+        <div class="control-row-title"><span class="eyebrow">LEADER ARM</span><span id="teleopState">idle</span></div>
+        <div id="teleopBody" class="teleop-body">
+          <div class="teleop-grid">
+            <div><span>Source</span><strong id="teleopSource">-</strong></div>
+            <div><span>Rate</span><strong id="teleopRate">-</strong></div>
+            <div><span>Applied</span><strong id="teleopApplied">-</strong></div>
+            <div><span>Dropped</span><strong id="teleopDropped">-</strong></div>
+          </div>
+          <div id="teleopHint" class="teleop-hint">No leader connected. Run tools/so101_leader.py on the machine the arm is plugged into.</div>
+          <button id="teleopDisengage" class="stop" hidden>DISENGAGE LEADER</button>
+        </div>
+      </section>
+
+      <section id="cameraControls" class="camera-controls">
+        <div class="control-row-title"><span class="eyebrow">CAMERA</span><span>Viewport</span></div>
+        <div class="camera-tips">
+          <div><kbd>W A S D</kbd><span>Move</span></div>
+          <div><kbd>RMB drag</kbd><span>Rotate</span></div>
+          <div><kbd>Wheel</kbd><span>Zoom</span></div>
+        </div>
+        <button id="resetView" class="secondary wide">RESET VIEW</button>
+      </section>
+
+      <details class="diagnostics">
+        <summary><span>Developer diagnostics</span><small id="diagnosticSummary">WebRTC / control details</small></summary>
+        <div class="diagnostics-body">
+          <div class="diag-section">
+            <div class="eyebrow">SESSION</div>
+            <div class="pipeline-grid">
+              <div><span>Status</span><code id="sessionStatus">-</code></div>
+              <div><span>Adapter</span><code id="adapterValue">-</code></div>
+              <div><span>Launch</span><code id="launchValue">-</code></div>
+            </div>
+          </div>
+          <div class="diag-section">
+            <div class="eyebrow">NATIVE WEBRTC</div>
+            <div class="pipeline-grid">
+              <div><span>Renderer</span><code id="rendererValue">-</code></div>
+              <div><span>Signal</span><code id="signalEndpoint">-</code></div>
+              <div><span>Media</span><code id="mediaEndpoint">-</code></div>
+              <div><span>Bridge</span><code id="bridgeEndpoint">-</code></div>
+              <div><span>SDK</span><code id="sdkValue">-</code></div>
+            <div><span>Frames</span><code id="captureValue">-</code></div>
+            </div>
+            <div id="nativeHint" class="delivery">Loading stream configuration...</div>
+          </div>
+          <div class="diag-section">
+            <div class="eyebrow">STREAM STATS</div>
+            <div class="stats-grid">
+              <div><span>FPS</span><strong id="statFps">-</strong></div>
+              <div><span>RTD</span><strong id="statRtd">-</strong></div>
+              <div><span>Bitrate</span><strong id="statBitrate">-</strong></div>
+              <div><span>Packet loss</span><strong id="statLoss">-</strong></div>
+            </div>
+          </div>
+          <div class="diag-section">
+            <div class="eyebrow">CURRENT MOTION</div>
+            <div class="command-values three">
+              <div><span>linear</span><strong id="linearCmd">0.000</strong></div>
+              <div><span>lateral</span><strong id="lateralCmd">0.000</strong></div>
+              <div><span>angular</span><strong id="angularCmd">0.000</strong></div>
+            </div>
+            <div id="delivery" class="delivery">Camera mode: robot motion is idle.</div>
+          </div>
+          <div class="diag-section event-section">
+            <div class="event-head"><div class="eyebrow">EVENTS</div><button id="clearLog" class="text-button">Clear</button></div>
+            <div id="eventLog" class="event-log"><div class="event muted-event">Waiting...</div></div>
+          </div>
+        </div>
+      </details>
+    </aside>
+  </main>
+
+  <div id="launcher" class="launcher" hidden>
+    <div class="launcher-panel">
+      <div class="launcher-head">
+        <div><div class="eyebrow">PLAYGROUND LIBRARY</div><h1>Choose a world and a robot</h1><p>One active simulation at a time. You can switch without changing the browser control API.</p></div>
+        <button id="closeLauncher" class="icon-button" aria-label="Close">×</button>
+      </div>
+      <div class="library-block"><div class="library-title"><strong>Scene Library</strong><span id="sceneCount"></span></div><div id="sceneLibrary" class="library-grid"></div></div>
+      <div class="library-block"><div class="library-title"><strong>Robot Library</strong><span id="robotCount"></span></div><div id="robotLibrary" class="library-grid robot-grid"></div></div>
+      <div class="library-block">
+        <div class="library-title"><strong>Your own assets</strong><span id="uploadHint">USD only</span></div>
+        <div class="upload-row">
+          <input id="uploadFile" type="file" accept=".usd,.usda,.usdc,.usdz" />
+          <button id="uploadButton" class="secondary">UPLOAD</button>
+          <span id="uploadStatus" class="upload-status"></span>
+        </div>
+        <div id="uploadList" class="upload-list"></div>
+
+        <form id="registerForm" class="register-form" hidden>
+          <div class="register-head">
+            <strong id="registerFileName">-</strong>
+            <div class="segmented small" role="group">
+              <button type="button" class="regkind active" data-kind="robot">As robot</button>
+              <button type="button" class="regkind" data-kind="scene">As scene</button>
+            </div>
+          </div>
+          <div id="inspectSummary" class="inspect-summary">Inspecting...</div>
+
+          <div class="register-grid">
+            <label><span>Id</span><input id="regId" required placeholder="my-robot" /></label>
+            <label><span>Display name</span><input id="regName" placeholder="My Robot" /></label>
+          </div>
+
+          <div id="robotFields">
+            <label class="wide"><span>Drive type</span>
+              <select id="regAdapter">
+                <option value="joint-position">Arm / joint position</option>
+                <option value="differential-drive">Two-wheel differential</option>
+                <option value="holonomic-drive">Holonomic (3+ wheels)</option>
+              </select>
+            </label>
+            <div class="joint-picker-title"><span>Joints to drive</span><span id="jointPickCount">0 selected</span></div>
+            <div id="jointPicker" class="joint-picker"></div>
+            <div class="register-grid" id="wheelFields" hidden>
+              <label><span>Wheel radius (m)</span><input id="regWheelRadius" type="number" step="0.001" value="0.05" /></label>
+              <label><span>Wheel base (m)</span><input id="regWheelBase" type="number" step="0.001" value="0.2" /></label>
+            </div>
+            <label class="wide" id="comField" hidden><span>Centre-of-mass prim subpath</span><input id="regCom" placeholder="base_link/control_offset" /></label>
+            <div class="register-grid">
+              <label><span>Spawn height (m)</span><input id="regSpawnZ" type="number" step="0.01" value="0.05" /></label>
+              <label><span>Max speed (m/s)</span><input id="regMaxLinear" type="number" step="0.1" value="0.5" /></label>
+            </div>
+          </div>
+
+          <div id="sceneFields" hidden>
+            <div class="register-grid">
+              <label><span>Robot spawn X Y Z</span><input id="regSpawn" placeholder="0, 0, 0" /></label>
+              <label><span>Camera eye X Y Z</span><input id="regCameraEye" placeholder="4, -5, 3" /></label>
+            </div>
+          </div>
+
+          <div class="register-actions">
+            <span id="registerError" class="register-error"></span>
+            <button type="button" id="cancelRegister" class="ghost-mini">Cancel</button>
+            <button type="submit" id="submitRegister" class="primary">ADD TO LIBRARY</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="launcher-footer">
+        <div id="launchSummary" class="launch-summary">Select one scene and one robot.</div>
+        <button id="launchSession" class="primary launch-button">LAUNCH SESSION</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

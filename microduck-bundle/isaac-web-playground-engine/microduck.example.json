@@ -1,0 +1,125 @@
+{
+  "robots": [
+    {
+      "id": "microduck",
+      "name": "Pollen MicroDuck",
+      "description": "25 cm bipedal robot from Pollen Robotics and Hugging Face. 14 joints. Stands free -- it is not bolted down, so it can fall over.",
+      "adapter": "joint-position",
+      "asset_path": "upload://microduck/robot_allcollisions.usda",
+      "prim_path": "/World/WebRobot",
+      "fix_root": false,
+      "spawn_at_origin": true,
+      "spawn_z": 0.005,
+      "home_position": {
+        "left_hip_yaw": 0.0,
+        "left_hip_roll": -0.0873,
+        "left_hip_pitch": -0.4579,
+        "left_knee": -0.0049,
+        "left_ankle": 0.453,
+        "neck_pitch": 0.3491,
+        "head_pitch": 0.3491,
+        "head_yaw": 0.0,
+        "head_roll": 0.0,
+        "right_hip_yaw": 0.0,
+        "right_hip_roll": 0.0873,
+        "right_hip_pitch": 0.4579,
+        "right_knee": 0.0049,
+        "right_ankle": -0.453
+      },
+      "drive_stiffness": 0.05,
+      "drive_damping": 0.00482,
+      "drive_max_force": 0.96,
+      "solver_position_iterations": 8,
+      "solver_velocity_iterations": 2,
+      "max_depenetration_velocity": 1.0,
+      "policy": {
+        "file": "microduck/policies/alpha_stand.onnx",
+        "joints": [
+          "left_hip_yaw",
+          "left_hip_roll",
+          "left_hip_pitch",
+          "left_knee",
+          "left_ankle",
+          "neck_pitch",
+          "head_pitch",
+          "head_yaw",
+          "head_roll",
+          "right_hip_yaw",
+          "right_hip_roll",
+          "right_hip_pitch",
+          "right_knee",
+          "right_ankle"
+        ],
+        "home": [
+          0.0,
+          -0.0873,
+          -0.4579,
+          -0.0049,
+          0.453,
+          0.3491,
+          0.3491,
+          0.0,
+          0.0,
+          0.0,
+          0.0873,
+          0.4579,
+          0.0049,
+          -0.453
+        ],
+        "action_scale": 1.0,
+        "physics_hz": 200,
+        "decimation": 4,
+        "obs_size": 61,
+        "command_size": 13,
+        "contact_friction": 1.0,
+        "autostart": true,
+        "stand_height": 0.125,
+        "gains_by_file": {
+          "alpha_stand.onnx": {
+            "stiffness": 0.05,
+            "damping": 0.00482,
+            "max_force": 0.96
+          },
+          "alpha_walking.onnx": {
+            "stiffness": 0.2,
+            "damping": 0.01928,
+            "max_force": 0.96
+          },
+          "ball_kick_left.onnx": {
+            "stiffness": 0.2,
+            "damping": 0.01928,
+            "max_force": 0.96
+          },
+          "ball_kick_right.onnx": {
+            "stiffness": 0.2,
+            "damping": 0.01928,
+            "max_force": 0.96
+          }
+        },
+        "stand_file": "alpha_stand.onnx",
+        "walk_file": "alpha_walking.onnx",
+        "pitch_size": 2.5,
+        "command_limits": [
+          0.4,
+          0.3,
+          1.0
+        ],
+        "switch_threshold": 0.05,
+        "action_scale_by_file": {
+          "alpha_walking.onnx": 0.9,
+          "alpha_stand.onnx": 1.0,
+          "ball_kick_left.onnx": 1.0,
+          "ball_kick_right.onnx": 1.0
+        },
+        "target_filter": {
+          "head_alpha": 0.5,
+          "legs_alpha": 0.7
+        },
+        "switch_drive_gains": true
+      },
+      "max_linear_speed": 0.4,
+      "max_lateral_speed": 0.3,
+      "max_angular_speed": 1.0
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "robots": [
+    {
+      "id": "jetbot",
+      "name": "NVIDIA Jetbot",
+      "description": "Compact differential-drive robot. Fast to load and ideal for first checks.",
+      "adapter": "differential-drive",
+      "asset_path": "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd",
+      "prim_path": "/World/WebRobot",
+      "wheel_dof_names": ["left_wheel_joint", "right_wheel_joint"],
+      "wheel_radius": 0.03,
+      "wheel_base": 0.1125,
+      "spawn_z": 0.05,
+      "max_linear_speed": 0.5,
+      "max_lateral_speed": 0.0,
+      "max_angular_speed": 1.5,
+      "max_wheel_speed": 30.0,
+      "mock_shape": "jetbot"
+    },
+    {
+      "id": "carter-v1",
+      "name": "NVIDIA Carter v1",
+      "description": "Larger differential mobile base for navigation-oriented scenes.",
+      "adapter": "differential-drive",
+      "asset_path": "/Isaac/Robots/NVIDIA/Carter/carter_v1.usd",
+      "prim_path": "/World/WebRobot",
+      "wheel_dof_names": ["left_wheel", "right_wheel"],
+      "wheel_radius": 0.24,
+      "wheel_base": 0.54,
+      "spawn_z": 0.30,
+      "max_linear_speed": 1.0,
+      "max_lateral_speed": 0.0,
+      "max_angular_speed": 1.5,
+      "max_wheel_speed": 20.0,
+      "mock_shape": "carter"
+    },
+    {
+      "id": "nova-carter",
+      "name": "NVIDIA Nova Carter",
+      "description": "Current NVIDIA AMR reference platform with a differential base.",
+      "adapter": "differential-drive",
+      "asset_path": "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd",
+      "prim_path": "/World/WebRobot",
+      "wheel_dof_names": ["left_wheel_joint", "right_wheel_joint"],
+      "wheel_radius": 0.14,
+      "wheel_base": 0.413,
+      "spawn_z": 0.20,
+      "max_linear_speed": 1.0,
+      "max_lateral_speed": 0.0,
+      "max_angular_speed": 1.2,
+      "max_wheel_speed": 20.0,
+      "mock_shape": "nova-carter"
+    },
+    {
+      "id": "kaya",
+      "name": "NVIDIA Kaya",
+      "description": "Three-wheel holonomic base. Adds true lateral/strafe control.",
+      "adapter": "holonomic-drive",
+      "asset_path": "/Isaac/Robots/NVIDIA/Kaya/kaya.usd",
+      "prim_path": "/World/WebRobot",
+      "wheel_dof_names": ["axle_0_joint", "axle_1_joint", "axle_2_joint"],
+      "com_prim_subpath": "base_link/control_offset",
+      "spawn_z": 0.02,
+      "max_linear_speed": 0.7,
+      "max_lateral_speed": 0.7,
+      "max_angular_speed": 1.5,
+      "max_wheel_speed": 35.0,
+      "mock_shape": "kaya"
+    }
+  ]
+}

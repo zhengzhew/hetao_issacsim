@@ -1,0 +1,18 @@
+# Local credentials and machine settings
+.env
+*.env
+!.env.example
+.npmrc
+gateway.env
+local.bat
+
+# Dependencies and generated files
+node_modules/
+__pycache__/
+*.py[cod]
+logs/
+run/
+uploads/
+*.part
+.DS_Store
+Thumbs.db

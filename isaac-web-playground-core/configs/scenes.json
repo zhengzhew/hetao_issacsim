@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "scenes": [
+    {
+      "id": "warehouse",
+      "name": "Simple Warehouse",
+      "description": "Small warehouse for mobile-robot teleoperation and navigation demos.",
+      "asset_path": "/Isaac/Environments/Simple_Warehouse/warehouse.usd",
+      "category": "warehouse",
+      "spawn": [-1.5, -1.5, 0.0],
+      "camera_eye": [3.5, -4.5, 2.4],
+      "camera_target": [-1.2, -1.2, 0.25],
+      "mock_world": "warehouse"
+    },
+    {
+      "id": "warehouse-multi",
+      "name": "Multi-shelf Warehouse",
+      "description": "Larger warehouse layout with multiple shelves and longer driving aisles.",
+      "asset_path": "/Isaac/Environments/Simple_Warehouse/warehouse_multiple_shelves.usd",
+      "category": "warehouse",
+      "spawn": [0.0, -4.0, 0.0],
+      "camera_eye": [7.0, -10.0, 5.0],
+      "camera_target": [0.0, 0.0, 0.5],
+      "mock_world": "warehouse-multi"
+    },
+    {
+      "id": "simple-room",
+      "name": "Simple Room",
+      "description": "Compact indoor room with a table for short-range interaction demos.",
+      "asset_path": "/Isaac/Environments/Simple_Room/simple_room.usd",
+      "category": "indoor",
+      "spawn": [-1.4, -1.1, 0.0],
+      "camera_eye": [4.0, -4.0, 2.8],
+      "camera_target": [0.0, 0.0, 0.4],
+      "mock_world": "simple-room"
+    },
+    {
+      "id": "grid",
+      "name": "Flat Grid",
+      "description": "Open flat grid for controller checks and unconstrained driving.",
+      "asset_path": "/Isaac/Environments/Grid/default_environment.usd",
+      "category": "test",
+      "spawn": [0.0, 0.0, 0.0],
+      "camera_eye": [5.0, -5.0, 4.0],
+      "camera_target": [0.0, 0.0, 0.0],
+      "mock_world": "grid"
+    }
+  ]
+}

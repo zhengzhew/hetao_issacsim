@@ -1,0 +1,32 @@
+{
+  "name": "isaac-web-playground",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-accessible NVIDIA Isaac Sim playground: MJPEG streaming, robot control, uploads, teleoperation and an optional language-model agent.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "demo": "node scripts/local_demo.mjs",
+    "build:native": "node scripts/build_native.mjs",
+    "check": "npm run check:node && npm run check:python",
+    "preflight": "bash scripts/preflight_stage2.sh",
+    "stage2:up": "bash scripts/stage2_up.sh",
+    "stage2:down": "bash scripts/stage2_down.sh",
+    "stage2:status": "bash scripts/stage2_status.sh",
+    "stage2:accept": "node scripts/accept_stage2.mjs",
+    "stage2:accept:local": "node scripts/accept_stage2_local.mjs",
+    "check:node": "node --check server/index.js && node --check web/app.js && node --check src/native_stream_sdk.js && node --check scripts/local_demo.mjs && node --check scripts/accept_stage2.mjs",
+    "check:python": "python3 -m py_compile bridge/isaac_playground.py bridge/core/*.py",
+    "test": "python3 tools/check_repo.py && npm run check"
+  },
+  "dependencies": {
+    "@nvidia/ov-web-rtc": "6.6.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

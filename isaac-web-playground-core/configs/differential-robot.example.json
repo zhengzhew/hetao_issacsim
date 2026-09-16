@@ -1,0 +1,13 @@
+{
+  "type": "differential",
+  "prim_path": "/World/Robot",
+  "wheel_dof_names": [
+    "LEFT_WHEEL_JOINT_FROM_YOUR_USD",
+    "RIGHT_WHEEL_JOINT_FROM_YOUR_USD"
+  ],
+  "wheel_radius": 0.05,
+  "wheel_base": 0.30,
+  "max_linear_speed": 0.50,
+  "max_angular_speed": 1.00,
+  "max_wheel_speed": 20.0
+}
