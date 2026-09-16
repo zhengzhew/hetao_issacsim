@@ -84,6 +84,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav',
 }
 
 function json(res, code, data) {
@@ -801,7 +802,7 @@ function serveStatic(pathname, res) {
   }
   res.writeHead(200, {
     'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-    'Cache-Control': path.extname(file) === '.html' ? 'no-store' : 'public, max-age=300',
+    'Cache-Control': path.extname(file) === '.html' ? 'no-store' : (['.js', '.css'].includes(path.extname(file)) ? 'no-cache' : 'public, max-age=300'),
   })
   const stream = fs.createReadStream(file)
   stream.on('error', (err) => {

@@ -3,6 +3,8 @@
   "robots": [
     {
       "id": "jetbot",
+      "frame_on_load": true,
+      "frame_margin": 3.5,
       "name": "NVIDIA Jetbot",
       "description": "Compact differential-drive robot. Fast to load and ideal for first checks.",
       "adapter": "differential-drive",
@@ -54,6 +56,8 @@
     },
     {
       "id": "kaya",
+      "frame_on_load": true,
+      "frame_margin": 3.5,
       "name": "NVIDIA Kaya",
       "description": "Three-wheel holonomic base. Adds true lateral/strafe control.",
       "adapter": "holonomic-drive",

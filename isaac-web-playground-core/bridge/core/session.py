@@ -93,7 +93,8 @@ def launch_session(scene_id: str, robot_id: str) -> dict:
         # Only reframe when the robot is small relative to the scene camera --
         # a wheeled base in a warehouse is meant to be seen in context.
         if robot_cfg.get("adapter") == "joint-position" or robot_cfg.get("frame_on_load"):
-            frame_robot(str(robot_cfg["prim_path"]), camera_defaults())
+            frame_robot(str(robot_cfg["prim_path"]), camera_defaults(),
+                        margin=float(robot_cfg.get("frame_margin", 1.15)))
         # After framing, never before: the follow offset is the distance from
         # the robot to wherever the camera ended up, and taking it while the
         # camera was still at the scene's default made the first update yank
@@ -107,5 +108,4 @@ def launch_session(scene_id: str, robot_id: str) -> dict:
         traceback.print_exc()
         print(f"[stage2] launch failed scene={scene_id} robot={robot_id}: {ROBOT_ERROR}", flush=True)
     return session_info()
-
 

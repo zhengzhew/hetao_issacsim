@@ -1,3 +1,4 @@
+import { initChildUI, sceneLabel, sceneNotes, picture } from './child-ui.js?v=20260916.3'
 const $ = (id) => document.getElementById(id)
 
 const viewerShell = $('viewerShell')
@@ -196,12 +197,12 @@ function badge(element, tone, text) {
 }
 
 function setSurfaceState(kind, detail = '') {
-  if (kind === 'live') badge(surfaceStatus, 'ok', 'Simulation live')
-  else if (kind === 'mock') badge(surfaceStatus, 'ok', 'Local mock')
-  else if (kind === 'connecting') badge(surfaceStatus, 'warn', 'Connecting')
-  else if (kind === 'missing') badge(surfaceStatus, 'bad', 'SDK missing')
-  else if (kind === 'error') badge(surfaceStatus, 'bad', 'Simulation off')
-  else badge(surfaceStatus, null, 'Simulation')
+  if (kind === 'live') badge(surfaceStatus, 'ok', '仿真已连接')
+  else if (kind === 'mock') badge(surfaceStatus, 'ok', '演示模式')
+  else if (kind === 'connecting') badge(surfaceStatus, 'warn', '正在连接')
+  else if (kind === 'missing') badge(surfaceStatus, 'bad', '请老师检查配置')
+  else if (kind === 'error') badge(surfaceStatus, 'bad', '仿真未连接')
+  else badge(surfaceStatus, null, '仿真准备中')
   if (detail) nativeHint.textContent = detail
 }
 
@@ -240,9 +241,9 @@ function activeRobot() { return robotById(state.session?.robotId) || null }
 function setBridgeBadge(connected, result = null) {
   state.bridgeConnected = connected
   state.bridgeMock = Boolean(result?.mock)
-  previewBadge.textContent = connected ? (state.bridgeMock ? 'Local Mock' : 'Live') : 'Preview'
+  previewBadge.textContent = connected ? (state.bridgeMock ? '演示模式' : '实时仿真') : '准备中'
   previewBadge.classList.toggle('live', connected)
-  environmentBadge.textContent = connected ? (state.bridgeMock ? 'LOCAL MOCK' : 'ISAAC LIVE') : 'OFFLINE'
+  environmentBadge.textContent = connected ? (state.bridgeMock ? '演示模式' : 'ISAAC SIM 已连接') : '等待连接'
   environmentBadge.classList.toggle('live', connected)
   // Show what Isaac is actually rendering, so a trimmed deployment is visible
   // rather than something you have to go and check on the box.
@@ -270,9 +271,10 @@ function applyRobotInfo(info = null, bridgeConnected = state.bridgeConnected) {
   state.lastRobotInfo = info
   const ready = Boolean(bridgeConnected && info?.ready)
   state.robotReady = ready
+  robotControls.classList.toggle('muted-controls', !ready)
   state.capabilities = info?.capabilities || { forward: true, lateral: false, yaw: true }
-  badge(robotStatus, ready ? 'ok' : 'bad', ready ? 'Robot ready' : 'Robot offline')
-  robotReadyText.textContent = ready ? 'Ready' : 'Waiting'
+  badge(robotStatus, ready ? 'ok' : 'bad', ready ? '伙伴准备好了' : '伙伴准备中')
+  robotReadyText.textContent = ready ? '准备好了' : '准备中'
   resetRobot.disabled = !ready
   adapterValue.textContent = info?.adapter || '-'
   renderCapabilities()
@@ -292,13 +294,14 @@ function renderCapabilities() {
   // An arm has no base motion at all, so the wheel-speed controls are noise.
   const jointDriven = Boolean(caps.joints)
   document.querySelector('.keyboard-section').hidden = jointDriven && state.mode === 'robot'
-  document.querySelector('#robotControls .settings').hidden = jointDriven
+  document.querySelector('.settings').hidden = jointDriven
   const lateral = Boolean(caps.lateral)
   lateralSetting.hidden = !lateral || jointDriven
   keyQ.classList.toggle('disabled', !lateral)
   keyE.classList.toggle('disabled', !lateral)
   lateralHint.hidden = jointDriven
-  lateralHint.textContent = lateral ? 'Q / E strafe left / right on this holonomic robot.' : 'This differential robot turns with A / D and cannot strafe.'
+  lateralHint.textContent = lateral ? '这个伙伴还可以向左、向右横着走。' : '这个伙伴可以前进、后退和转弯。'
+  refreshModeText()
 }
 
 function applySession(session, options = {}) {
@@ -307,13 +310,13 @@ function applySession(session, options = {}) {
   const scene = session.scene || sceneById(session.sceneId)
   const robotCatalog = robotById(session.robotId)
   const robotInfo = session.robot || null
-  const sceneLabel = scene?.name || session.sceneId || '-'
+  const sceneNameText = sceneLabel(scene)
   const robotLabel = robotInfo?.name || robotCatalog?.name || session.robotId || '-'
-  sceneName.textContent = sceneLabel
-  sceneSubtitle.textContent = `${robotLabel} · ${robotInfo?.adapter || robotCatalog?.adapter || 'adapter pending'}`
-  sceneSummary.textContent = sceneLabel
+  sceneName.textContent = sceneNameText
+  sceneSubtitle.textContent = `${robotLabel} · NVIDIA Isaac Sim`
+  sceneSummary.textContent = sceneNameText
   robotSummary.textContent = robotLabel
-  sessionTitle.textContent = `${sceneLabel} + ${robotLabel}`
+  sessionTitle.textContent = `${sceneNameText} · ${robotLabel}`
   sessionStatus.textContent = session.status || '-'
   launchValue.textContent = session.launchId ? `#${session.launchId}` : '-'
   state.selectedSceneId = session.sceneId
@@ -340,25 +343,28 @@ function syncSpeedRanges(robot) {
 }
 
 function renderLibrary() {
-  sceneCount.textContent = `${state.catalog.scenes.length} available`
-  robotCount.textContent = `${state.catalog.robots.length} available`
+  sceneCount.textContent = `${state.catalog.scenes.length} 个世界`
+  robotCount.textContent = `${state.catalog.robots.length} 位伙伴`
   sceneLibrary.innerHTML = ''
   robotLibrary.innerHTML = ''
   for (const scene of state.catalog.scenes) {
-    const card = document.createElement('article')
+    const card = document.createElement('button')
+    card.type = 'button'
     card.className = 'library-card'
     card.dataset.sceneId = scene.id
-    card.innerHTML = `<div class="card-top"><strong>${escapeHtml(scene.name)}</strong><span class="card-tag">${escapeHtml(scene.source === 'uploaded' ? 'yours' : (scene.category || 'scene'))}</span></div><p>${escapeHtml(scene.description || '')}</p><code>${escapeHtml(scene.asset_path || '')}</code>`
+    card.innerHTML = `${picture('scene', scene.id)}<div class="card-top"><strong>${escapeHtml(sceneLabel(scene))}</strong></div><p>${escapeHtml(sceneNotes[scene.id] || '老师准备的新世界，一起探索吧。')}</p>`
     card.addEventListener('click', () => { state.selectedSceneId = scene.id; renderLibrarySelection() })
     sceneLibrary.append(card)
   }
   for (const robot of state.catalog.robots) {
-    const card = document.createElement('article')
+    const card = document.createElement('button')
+    card.type = 'button'
     card.className = 'library-card'
     card.dataset.robotId = robot.id
     const kind = { 'holonomic-drive': 'holonomic', 'joint-position': 'arm' }[robot.adapter] || 'differential'
     const tag = robot.source === 'uploaded' ? `${kind} · yours` : kind
-    card.innerHTML = `<div class="card-top"><strong>${escapeHtml(robot.name)}</strong><span class="card-tag ${kind === 'differential' ? '' : 'holo'}">${escapeHtml(tag)}</span></div><p>${escapeHtml(robot.description || '')}</p><code>${escapeHtml(robot.asset_path || '')}</code>`
+    const robotNotes = {jetbot:'小巧灵活，陪你练习前进和转弯。','carter-v1':'稳稳的大伙伴，带你逛逛仓库。','nova-carter':'探索好帮手，准备好出发了吗？',kaya:'我还会横着走！试试左右平移。'}
+    card.innerHTML = `${picture('robot', robot.id)}<div class="card-top"><strong>${escapeHtml(robot.name)}</strong></div><p>${escapeHtml(robotNotes[robot.id] || '老师准备的新伙伴。')}</p>`
     card.addEventListener('click', () => { state.selectedRobotId = robot.id; renderLibrarySelection() })
     robotLibrary.append(card)
   }
@@ -370,12 +376,12 @@ function escapeHtml(text) {
 }
 
 function renderLibrarySelection() {
-  document.querySelectorAll('[data-scene-id]').forEach((el) => el.classList.toggle('selected', el.dataset.sceneId === state.selectedSceneId))
-  document.querySelectorAll('[data-robot-id]').forEach((el) => el.classList.toggle('selected', el.dataset.robotId === state.selectedRobotId))
+  document.querySelectorAll('[data-scene-id]').forEach((el) => {const selected=el.dataset.sceneId===state.selectedSceneId;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected))})
+  document.querySelectorAll('[data-robot-id]').forEach((el) => {const selected=el.dataset.robotId===state.selectedRobotId;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected))})
   const scene = sceneById(state.selectedSceneId)
   const robot = robotById(state.selectedRobotId)
-  launchSummary.innerHTML = scene && robot ? `<strong>${escapeHtml(scene.name)}</strong> + <strong>${escapeHtml(robot.name)}</strong>` : 'Select one scene and one robot.'
-  launchSessionButton.disabled = state.launching || !scene || !robot
+  launchSummary.innerHTML = scene && robot ? `<strong>${escapeHtml(sceneLabel(scene))}</strong> · <strong>${escapeHtml(robot.name)}</strong>` : '先选世界，再选一位机器人伙伴。'
+  launchSessionButton.disabled = state.launching || !state.bridgeConnected || !scene || !robot
 }
 
 function openLauncher() {
@@ -399,9 +405,10 @@ async function launchSelectedSession() {
   clearKeys(true)
   state.launching = true
   launchSessionButton.disabled = true
-  launchSessionButton.textContent = 'LAUNCHING...'
+  launchSessionButton.textContent = '◷ 正在准备…'
   sessionStatus.textContent = 'launching'
-  launchSummary.textContent = 'Loading USD and preparing robot adapter...'
+  launchSummary.textContent = '正在准备世界和机器人，请稍等…'
+  childUI.guide('小芽正在准备实验室。等一等，马上就好。','calm')
   logEvent('launch', `${state.selectedSceneId} + ${state.selectedRobotId}`)
   try {
     const response = await fetch('/api/session/launch', {
@@ -416,11 +423,12 @@ async function launchSelectedSession() {
     document.body.classList.remove('launcher-open')
     delivery.textContent = `Session ready: ${payload.session.sceneId} + ${payload.session.robotId}.`
   } catch (err) {
-    launchSummary.textContent = `Launch failed: ${err.message}`
+    launchSummary.textContent = '实验室还没准备好，请让老师帮忙看看。'
+    childUI.guide('没关系，实验室需要一点帮助。请叫老师来看看吧。','calm')
     logEvent('launch-error', err.message)
   } finally {
     state.launching = false
-    launchSessionButton.textContent = 'LAUNCH SESSION'
+    launchSessionButton.textContent = '▶ 一起出发'
     renderLibrarySelection()
   }
 }
@@ -489,8 +497,8 @@ function setMode(mode) {
   state.lastCommandKey = ''
   document.querySelectorAll('.mode').forEach((button) => button.classList.toggle('active', button.dataset.mode === mode))
   robotInputShield.hidden = mode !== 'robot'
-  modeChip.textContent = mode === 'camera' ? 'Camera' : 'Robot'
-  keyboardMeaning.textContent = mode === 'camera' ? 'Move camera' : 'Drive robot'
+  modeChip.textContent = mode === 'camera' ? '看看世界' : '开机器人'
+  keyboardMeaning.textContent = mode === 'camera' ? '观察世界' : '驾驶伙伴'
   cameraControls.hidden = mode !== 'camera'
   robotControls.hidden = mode !== 'robot'
   renderCapabilities()
@@ -508,24 +516,33 @@ function setMode(mode) {
 
 /** Keyboard help depends on the live surface, which can change after setMode. */
 function refreshModeText() {
+  const cameraMode = state.mode === 'camera'
+  keyQ.classList.toggle('disabled', !cameraMode && !state.capabilities?.lateral)
+  keyE.classList.toggle('disabled', !cameraMode && !state.capabilities?.lateral)
+  keyQ.querySelector('small').textContent = cameraMode ? '抬高视角' : '向左平移'
+  keyE.querySelector('small').textContent = cameraMode ? '降低视角' : '向右平移'
+  keyQ.setAttribute('aria-label',cameraMode ? '抬高视角' : '向左平移')
+  keyE.setAttribute('aria-label',cameraMode ? '降低视角' : '向右平移')
+  document.querySelector('[data-key="w"] small').textContent = cameraMode ? '拉近看看' : '向前'
+  document.querySelector('[data-key="s"] small').textContent = cameraMode ? '退远一点' : '向后'
   if (state.mode === 'robot') {
     const lateral = state.capabilities?.lateral ? ' · Q/E strafe' : ''
-    modeHelp.textContent = `W/S drive, A/D turn${lateral}. The camera is shielded while robot mode is active.`
-    focusHint.textContent = `Robot · WASD drive${lateral} · STOP always available`
+    modeHelp.textContent = '按住箭头开动伙伴，松开就停下来。'
+    focusHint.textContent = '↑ 前进 · ↓ 后退 · ← → 转弯 · 红色按钮停止'
     cameraTips.hidden = true
     return
   }
   cameraTips.hidden = false
   if (state.compatLive) {
-    modeHelp.textContent = 'A/D orbit, W/S zoom in and out, Q/E raise and lower. The wheel zooms too.'
-    focusHint.textContent = 'Camera · A/D orbit · W/S zoom · Q/E height'
+    modeHelp.textContent = '按住左右箭头转一转，上下箭头拉近或拉远。'
+    focusHint.textContent = '← → 转一转 · ↑ ↓ 近一点 / 远一点'
     cameraTips.innerHTML = '<div><kbd>A / D</kbd><span>Orbit</span></div><div><kbd>W / S</kbd><span>Zoom</span></div><div><kbd>Q / E</kbd><span>Height</span></div>'
   } else if (state.cfg?.renderer === 'mock') {
-    modeHelp.textContent = 'WASD moves the local camera. RMB drag rotates; wheel zooms.'
-    focusHint.textContent = 'Camera · WASD move · RMB drag rotate · wheel zoom'
+    modeHelp.textContent = '这是简化演示，可以用方向键观察世界。'
+    focusHint.textContent = '换个角度，看看机器人身边的世界。'
   } else {
-    modeHelp.textContent = 'Click the stream and use Isaac viewport controls. Input passes directly to the NVIDIA WebRTC stream.'
-    focusHint.textContent = 'Camera · click stream · RMB + W/A/S/D'
+    modeHelp.textContent = '点击画面，用鼠标和方向键观察世界。'
+    focusHint.textContent = '点击画面，换个角度看看'
   }
 }
 
@@ -535,7 +552,7 @@ function handleKeyboard(event, isDown) {
   if (isTypingTarget(event.target)) return
   // A key-up must always be honoured, or the key sticks and the robot keeps
   // driving with no reachable STOP.
-  if (!launcher.hidden) { if (isDown) return; }
+  if (!launcher.hidden || document.querySelector('dialog[open]')) { if (isDown) return; }
   const key = event.key.toLowerCase()
   const robotKeys = ['w','a','s','d','q','e']
   if (!robotKeys.includes(key)) return
@@ -593,10 +610,10 @@ clearLog.addEventListener('click', () => { eventLog.innerHTML = '<div class="eve
 document.querySelectorAll('.mode').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)))
 document.querySelectorAll('.key[data-key]').forEach((button) => {
   button.addEventListener('pointerdown', (event) => {
-    if (state.mode !== 'robot') return
+    if (state.mode !== 'robot' && state.mode !== 'camera') return
     const key = button.dataset.key
-    if ((key === 'q' || key === 'e') && !state.capabilities?.lateral) return
-    event.preventDefault(); state.pressed.add(key); updateKeyVisuals(); sendMotion(computeMotion(), 'pointer')
+    if (state.mode === 'robot' && (key === 'q' || key === 'e') && !state.capabilities?.lateral) return
+    event.preventDefault(); state.pressed.add(key); updateKeyVisuals(); if(state.mode === 'robot') sendMotion(computeMotion(), 'pointer')
   })
   const release = () => {
     const key = button.dataset.key
@@ -763,6 +780,12 @@ async function loadCameraOrbit() {
   if (!state.orbit) state.orbit = orbitFromView([4, -5, 3], [0, 0, 0.4])
 }
 
+function reconnectCompatImage() {
+  state.compatRequestedAt = Date.now()
+  state.compatNeedsReconnect = false
+  mjpegSurface.src = `/api/stream.mjpg?t=${state.compatRequestedAt}`
+}
+
 function startCompatSurface(reason = '') {
   if (state.compatLive) return
   state.streamGeneration += 1
@@ -774,7 +797,7 @@ function startCompatSurface(reason = '') {
   mockCanvas.hidden = true
   mockLegend.hidden = true
   mjpegSurface.hidden = false
-  mjpegSurface.src = `/api/stream.mjpg?t=${Date.now()}`
+  reconnectCompatImage()
   streamOverlay.hidden = true
   // The teardown above resolves later; make sure it cannot re-open the modal.
   setTimeout(() => { if (state.compatLive) streamOverlay.hidden = true }, 0)
@@ -784,7 +807,7 @@ function startCompatSurface(reason = '') {
   disconnectStreamButton.disabled = true
   useCompatStream.textContent = 'Try WebRTC stream (higher frame rate, same network only)'
   const size = state.cfg?.capture ? `${state.cfg.capture.width}x${state.cfg.capture.height}@${state.cfg.capture.fps}` : ''
-  setSurfaceState('live', `Compatibility stream ${size}: server-rendered frames over HTTP.${reason ? ` ${reason}` : ''}`)
+  setSurfaceState('connecting', `Waiting for compatibility stream ${size}.${reason ? ` ${reason}` : ''}`)
   loadCameraOrbit()
   refreshModeText()
   logEvent('surface', `compatibility stream started${reason ? ` (${reason})` : ''}`)
@@ -810,7 +833,7 @@ mjpegSurface.addEventListener('error', () => {
   if (!state.compatLive) return
   state.compatHealthy = false
   setSurfaceState('error', 'Compatibility stream dropped; retrying.')
-  setTimeout(() => { if (state.compatLive) mjpegSurface.src = `/api/stream.mjpg?t=${Date.now()}` }, 1500)
+  setTimeout(() => { if (state.compatLive) reconnectCompatImage() }, 1500)
 })
 
 mjpegSurface.addEventListener('wheel', (event) => {
@@ -1317,7 +1340,7 @@ function handleAssistantEvent(event) {
         assistantInput.disabled = true
         assistantSend.disabled = true
         assistantHint.className = 'assistant-hint bad'
-        assistantHint.textContent = 'No language model is configured on the server.'
+        assistantHint.textContent = '模型服务尚未配置，请老师连接后使用。'
       } else {
         assistantPanel.classList.remove('off')
         assistant.label = `via ${event.model}`
@@ -1466,6 +1489,21 @@ async function refreshStatus() {
     setSignalState(status.signaling||{});setBridgeBadge(Boolean(status.bridge?.connected),status.bridge?.result)
     if(!status.bridge?.connected&&status.bridge?.busy)badge(previewBadge,'warn','Loading scene')
     if(status.capture)captureValue.textContent=status.capture.lastError?`error: ${String(status.capture.lastError).slice(0,40)}`:`${status.capture.clients} viewer(s) · ${status.capture.framesCaptured} frames · ${status.capture.writes} sent`
+    if (state.compatLive) {
+      // Some browsers finish an empty/closed MJPEG response without firing
+      // error. Recover after bridge restarts and long initial scene loads.
+      const frameCount = Number(status.capture?.framesCaptured || 0)
+      if (!status.bridge?.connected || frameCount < (state.compatFrameCount || 0)) state.compatNeedsReconnect = true
+      state.compatFrameCount = frameCount
+      if (status.bridge?.connected && Date.now() - (state.compatRequestedAt || 0) > 5000 &&
+          (state.compatNeedsReconnect || mjpegSurface.naturalWidth === 0)) reconnectCompatImage()
+      const lastFrameAt = Number(status.capture?.lastFrameAt || 0)
+      const hasRecentFrame = lastFrameAt > 0 && Date.now() - lastFrameAt < 10000
+      state.compatHealthy = Boolean(status.bridge?.connected && hasRecentFrame && mjpegSurface.naturalWidth > 0)
+      if (state.compatHealthy) setSurfaceState('live', 'Compatibility stream is receiving rendered frames.')
+      else if (!status.bridge?.connected && !status.bridge?.busy) setSurfaceState('error', 'Isaac Sim bridge is offline; waiting for the simulation to start.')
+      else setSurfaceState('connecting', 'Waiting for rendered frames from Isaac Sim.')
+    }
   } catch {setSignalState({connected:false});setBridgeBadge(false)}
 }
 
@@ -1477,6 +1515,7 @@ async function boot() {
   renderLibrary();updateSpeedLabels();setMode('camera')
   try { const payload=await fetch('/api/session',{cache:'no-store'}).then((r)=>r.json()); if(payload.ok)applySession(payload.session) } catch {}
   if(!state.session){state.selectedSceneId=state.cfg.defaultSceneId;state.selectedRobotId=state.cfg.defaultRobotId;renderLibrarySelection();openLauncher()}
+  else openLauncher()
   if(state.cfg.renderer==='mock')startMockSurface()
   else if(state.cfg.renderer==='mjpeg')startCompatSurface()
   else {showNativeOverlay('Connecting to Isaac Sim','Falling back to the compatibility stream if WebRTC media cannot reach this browser.',false);await connectNativeSurface()}
@@ -1520,7 +1559,8 @@ setInterval(async () => {
 }, 5000)
 window.addEventListener('beforeunload',()=>{if(state.mode==='robot')clearKeys(true)})
 
-boot().catch((err)=>{console.error(err);streamTitle.textContent='Playground failed to start';streamText.textContent=err.message;streamOverlay.hidden=false})
+const childUI = initChildUI({getState:()=>state,setMode,openLauncher,clearKeys})
+boot().catch((err)=>{console.error(err);streamTitle.textContent='实验室暂时没有连接';streamText.textContent='请让老师检查服务，再试一次。';streamOverlay.hidden=false})
 
 // --- the legged robot's policy ----------------------------------------------
 //

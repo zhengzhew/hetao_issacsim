@@ -30,6 +30,8 @@ npm run demo
 
 参阅 [主项目说明](isaac-web-playground-core/README.md) 和 [部署指南](isaac-web-playground-core/deploy/README.md)。需要配置桥接服务地址、串流方式及资源路径；请显式设置 `ISAAC_STREAM_RENDERER`，配置示例使用 `mjpeg`，服务代码未配置时使用 `native`。
 
+Windows 本机部署请使用 [原生部署说明](isaac-web-playground-core/deploy/windows/README-native.md)。儿童界面采用薄荷绿与白色卡片，提供中文语音、图形方向键和家长工作台，保留 NVIDIA 与 Isaac Sim 描述。
+
 本仓库不包含 Isaac Sim 安装程序、USD 场景/机器人资产或 ONNX 策略权重，需另行准备。
 
 ## 当前状态与边界
@@ -38,7 +40,8 @@ npm run demo
 - 原项目没有身份认证，部署范围应与其可信访问假设一致。
 - MicroDuck 尚未集成，原说明记录了策略运行时画面采集异常的问题。
 - 当前副本缺少部分原文档引用的材料，包括主项目 `tests/` 目录和 MicroDuck 的 `2026-09-07-clock-and-control-fix-report.md`。
-- 本次仓库整理未执行真实 Isaac Sim、模型服务或实体机械臂验证。原文档的性能数字是原参考部署记录。
+- 2026-09-16：Windows 本机 Isaac Sim 6.0.1 + MJPEG 已通过四组场景/机器人加载和图像响应检查；Jetbot 前进、Kaya 横移均测得真实位姿变化。浏览器已确认 Grid/Jetbot 画面、启动与停止交互。另一台设备的局域网访问尚待确认。
+- 模型服务与实体机械臂未验证；MicroDuck 未集成。原文档的性能数字是原参考部署记录，不代表本机性能。
 
 ## 代码与资产来源
 

@@ -157,6 +157,6 @@ except ImportError:
 
 from isaacsim.storage.native import get_assets_root_path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CATALOG_DIR = Path(ARGS.catalog_dir).expanduser().resolve() if ARGS.catalog_dir else ROOT / "configs"
 UPLOAD_DIR = Path(ARGS.upload_dir).expanduser().resolve() if ARGS.upload_dir else ROOT / "uploads"

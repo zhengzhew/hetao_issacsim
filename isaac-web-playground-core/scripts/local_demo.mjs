@@ -25,9 +25,9 @@ function findFreePort(start, host = '127.0.0.1', span = 50) {
   })
 }
 
-const bridgePort = await findFreePort(8765)
-const signalPort = await findFreePort(49100)
-const webPort = await findFreePort(8080, '0.0.0.0')
+const bridgePort = await findFreePort(Number(process.env.ISAAC_DEMO_BRIDGE_PORT || 18765))
+const signalPort = await findFreePort(Number(process.env.ISAAC_DEMO_SIGNAL_PORT || 49110))
+const webPort = await findFreePort(Number(process.env.ISAAC_DEMO_WEB_PORT || 18081), '0.0.0.0')
 const mediaPort = 47998
 
 process.env.ISAAC_STREAM_RENDERER = 'mock'

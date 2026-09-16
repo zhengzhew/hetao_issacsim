@@ -27,6 +27,10 @@ def stage_info() -> dict:
 
 def dispatch(op: str, args: dict) -> object:
     timeline = omni.timeline.get_timeline_interface()
+    if op == "policy_status":
+        # This build has no MicroDuck policy engine. Report that explicitly
+        # instead of emitting an exception for every frontend status poll.
+        return {"available": False, "engaged": False}
     if op == "ping":
         return {
             "service": "isaac-web-playground-stage2",
@@ -319,5 +323,4 @@ class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = sys.platform != "win32"
     daemon_threads = True
     address_family = socket.AF_INET
-
 
