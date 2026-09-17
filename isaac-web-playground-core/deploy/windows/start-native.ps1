@@ -7,8 +7,10 @@ param(
     [string]$Robot = 'jetbot',
     [ValidateRange(320,1920)][int]$CaptureWidth = 1920,
     [ValidateRange(240,1080)][int]$CaptureHeight = 1080,
-    [ValidateRange(1,60)][int]$CaptureFps = 30,
-    [ValidateRange(20,95)][int]$CaptureQuality = 90
+    [ValidateRange(1,60)][int]$CaptureFps = 60,
+    [ValidateRange(20,95)][int]$CaptureQuality = 90,
+    [ValidateSet('mjpeg','native')][string]$Renderer = 'native',
+    [string]$StreamHost = '127.0.0.1'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -34,9 +36,18 @@ if ($Component -in @('All','Bridge')) {
     Assert-PortFree $BridgePort
 }
 if ($Component -in @('All','Web')) { Assert-PortFree $WebPort }
+if ($Renderer -eq 'native' -and $Component -in @('All','Web') -and
+    -not (Test-Path -LiteralPath (Join-Path $projectRoot 'web\native-sdk.js'))) {
+    throw 'WebRTC client bundle missing. Run npm ci and npm run build:native in the project directory first.'
+}
 
 # Both processes share these settings and the same Windows upload directory.
-$env:ISAAC_STREAM_RENDERER = 'mjpeg'
+$env:ISAAC_STREAM_RENDERER = $Renderer
+$env:ISAAC_STREAM_HOST = $StreamHost
+$env:ISAAC_PUBLIC_IP = $StreamHost
+$env:ISAAC_STREAM_WIDTH = [string]$CaptureWidth
+$env:ISAAC_STREAM_HEIGHT = [string]$CaptureHeight
+$env:ISAAC_STREAM_FPS = [string]$CaptureFps
 $env:ISAAC_BRIDGE_HOST = '127.0.0.1'
 $env:ISAAC_BRIDGE_PORT = [string]$BridgePort
 $env:ISAAC_UPLOAD_DIR = $uploadDir
@@ -54,6 +65,10 @@ $env:ISAAC_CAPTURE_QUALITY = [string]$CaptureQuality
 # independently at CaptureWidth/CaptureHeight, as in the measured setup.
 $env:ISAAC_RENDER_WIDTH = '640'
 $env:ISAAC_RENDER_HEIGHT = '360'
+if ($Renderer -eq 'native') {
+    $env:ISAAC_RENDER_WIDTH = [string]$CaptureWidth
+    $env:ISAAC_RENDER_HEIGHT = [string]$CaptureHeight
+}
 $env:PORT = [string]$WebPort
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
@@ -62,8 +77,9 @@ if ($Component -in @('All','Bridge')) {
     $entry = Join-Path $projectRoot 'bridge\isaac_playground.py'
     # Use a generated batch file to preserve spaces and Chinese paths.
     $batch = Join-Path $runDir 'bridge-native.cmd'
+    $streamArgs = if ($Renderer -eq 'native') { '--livestream --hide-ui --idle-after 0' } else { '--no-livestream --idle-after 5' }
     $lines = @('@echo off','chcp 65001 >nul',
-        ('call "{0}" "{1}" --host 127.0.0.1 --port {2} --no-livestream --no-multi-gpu --gpu 0 --idle-after 5 --idle-hz 5' -f $pythonBat,$entry,$BridgePort),
+        ('call "{0}" "{1}" --host 127.0.0.1 --port {2} {3} --no-multi-gpu --gpu 0 --idle-hz 5' -f $pythonBat,$entry,$BridgePort,$streamArgs),
         'exit /b %errorlevel%')
     [IO.File]::WriteAllLines($batch,$lines,[Text.UTF8Encoding]::new($false))
     $bridgeProcess = Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /s /c ""{0}""' -f $batch) -WorkingDirectory $IsaacDir -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir "bridge-$stamp.log") -RedirectStandardError (Join-Path $logDir "bridge-$stamp.err.log") -PassThru

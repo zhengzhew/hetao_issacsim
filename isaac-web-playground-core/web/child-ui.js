@@ -91,7 +91,7 @@ export function initChildUI(api) {
   for(const element of [blocks[2],$('assistantPanel'),document.querySelector('#robotControls .settings'),$('teleopPanel'),document.querySelector('.diagnostics')]) if(element)adultContent.append(element)
   const diagnostics=adult.querySelector('.diagnostics');diagnostics.open=true
   const connection=document.createElement('section');connection.className='adult-connection';connection.innerHTML='<h3>画面连接</h3>'
-  for(const id of ['streamSwitch','connectStream','disconnectStream','useCompatStream'])connection.append($(id))
+  for(const id of ['streamSwitch','connectStream','disconnectStream','useCompatStream','connectionExplanation'])connection.append($(id))
   adultContent.append(connection)
   const gate=document.createElement('dialog');gate.id='parentGate';gate.className='gate-dialog'
   gate.innerHTML='<form id="gateForm"><div class="gate-icon">♧</div><h2>请让家长或老师来帮忙</h2><p>大人完成验证后，就能打开工作台。</p><label for="gateAnswer" id="gateQuestion"></label><input id="gateAnswer" inputmode="numeric" autocomplete="off" required aria-describedby="gateError"/><p id="gateError" role="alert"></p><div class="gate-actions"><button type="button" id="gateCancel" class="secondary">返回探索</button><button type="submit" class="primary">确认答案 →</button></div></form>'

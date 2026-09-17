@@ -5,6 +5,7 @@ node_modules/
 logs/
 run/
 web/native-sdk.js
+web/native-sdk.js.map
 
 # The assistant's gateway credential. Lives at ~/gateway.env on a host, never
 # in the tree -- see docs/guides/assistant.md.

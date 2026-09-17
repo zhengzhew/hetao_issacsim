@@ -6,9 +6,9 @@ simulation; everyone else uses a browser.
 
 ## What you get
 
-- **A live view of the simulation**, streamed as MJPEG so it survives corporate
-  VPNs and reaches any browser. Up to 16 simultaneous viewers share one render
-  loop.
+- **A live view of the simulation**, using native WebRTC with GPU video encoding,
+  with MJPEG as a compatibility fallback. Concurrent WebRTC viewers require
+  separate capacity and connectivity validation.
 - **Manual control** — WASD for the camera, or switch to the robot and drive it.
   Arms get per-joint sliders.
 - **Plain-language control** — type "raise the arm and check what it looks
@@ -24,7 +24,7 @@ simulation; everyone else uses a browser.
 | | |
 |---|---|
 | Host | one machine with an NVIDIA GPU and **Isaac Sim 6.0.1** |
-| Host OS | Windows (Isaac Sim) + WSL2 (the web server), or Linux for both |
+| Host OS | Native Windows, Windows + WSL2, or Linux |
 | Node | 20 or newer |
 | Viewer | any browser, any OS, no GPU |
 
@@ -37,18 +37,20 @@ Two processes. They talk over TCP 8765.
 ```bash
 "$ISAAC_SIM_DIR/python.sh" bridge/isaac_playground.py \
     --host 0.0.0.0 --port 8765 \
-    --no-livestream --no-multi-gpu \
+    --livestream --hide-ui --no-multi-gpu \
     --upload-dir /path/to/uploads \
-    --idle-after 5 --idle-hz 5
+    --idle-after 0 --idle-hz 5
 ```
 
-**2. The web server**, plain Node:
+**2. Build the browser SDK** with `npm ci && npm run build:native`, then start the web server:
 
 ```bash
 ISAAC_BRIDGE_HOST=<the bridge machine> PORT=8080 node server/index.js
 ```
 
 Then open `http://<host>:8080`.
+
+For native Windows, follow [the Windows deployment guide](deploy/windows/README-native.md).
 
 On Windows + WSL2 use the wrappers in [`deploy/`](deploy/) instead — they
 handle nvm, the WSL↔Windows address split, log rotation and restart-on-crash.
@@ -62,7 +64,7 @@ Copy `.env.example` to `.env`. The settings that matter:
 | Variable | Meaning |
 |---|---|
 | `ISAAC_BRIDGE_HOST` / `_PORT` | where Isaac Sim is. Under WSL2, **not** `127.0.0.1` |
-| `ISAAC_STREAM_RENDERER` | `mjpeg` (default, works everywhere) or `native` (WebRTC) |
+| `ISAAC_STREAM_RENDERER` | `native` (default, WebRTC) or `mjpeg` (compatibility) |
 | `ISAAC_UPLOAD_DIR` | both processes must see this directory, each under its own spelling |
 | `ISAAC_TELEOP_WATCHDOG` | seconds before an unattended robot is held still. Default 0.40 |
 
@@ -90,7 +92,7 @@ docs/                        architecture, guides, operations and history
 | | |
 |---|---|
 | [`deploy/README.md`](deploy/README.md) | **start here** to run it on real hardware |
-| [`docs/operations/compatibility-stream.md`](docs/operations/compatibility-stream.md) | why MJPEG instead of WebRTC |
+| [`docs/operations/compatibility-stream.md`](docs/operations/compatibility-stream.md) | MJPEG compatibility path and historical deployment notes |
 | [`docs/guides/uploads.md`](docs/guides/uploads.md) | uploading scenes and robots, and how assets are validated |
 | [`docs/guides/teleoperation.md`](docs/guides/teleoperation.md) | leader/follower arm teleoperation |
 | [`docs/guides/assistant.md`](docs/guides/assistant.md) | the plain-language control panel |

@@ -398,6 +398,7 @@ function closeLauncherPanel() {
   if (!state.session) return
   launcher.hidden = true
   document.body.classList.remove('launcher-open')
+  if (state.cfg?.renderer === 'native') connectNativeSurface()
 }
 
 async function launchSelectedSession() {
@@ -421,6 +422,7 @@ async function launchSelectedSession() {
     if (payload.session.status !== 'ready') throw new Error(payload.session.error || 'robot adapter did not become ready')
     launcher.hidden = true
     document.body.classList.remove('launcher-open')
+    if (state.cfg?.renderer === 'native') await connectNativeSurface()
     delivery.textContent = `Session ready: ${payload.session.sceneId} + ${payload.session.robotId}.`
   } catch (err) {
     launchSummary.textContent = '实验室还没准备好，请让老师帮忙看看。'
@@ -802,10 +804,14 @@ function startCompatSurface(reason = '') {
   // The teardown above resolves later; make sure it cannot re-open the modal.
   setTimeout(() => { if (state.compatLive) streamOverlay.hidden = true }, 0)
   streamSwitch.hidden = false
-  streamSwitch.textContent = 'Stream: Compatible'
+  state.streamLive = false
+  state.streamConnecting = false
+  streamSwitch.textContent = '当前：MJPEG 兼容画面'
+  connectStreamButton.textContent = '尝试切换到 WebRTC'
   connectStreamButton.disabled = false
-  disconnectStreamButton.disabled = true
-  useCompatStream.textContent = 'Try WebRTC stream (higher frame rate, same network only)'
+  disconnectStreamButton.disabled = false
+  useCompatStream.hidden = true
+  $('connectionExplanation').textContent = `正在使用 MJPEG 兼容模式，不是 WebRTC。${reason ? `切换说明：${reason} ` : ''}可尝试 WebRTC；能否提升流畅度需要实际测试。`
   const size = state.cfg?.capture ? `${state.cfg.capture.width}x${state.cfg.capture.height}@${state.cfg.capture.fps}` : ''
   setSurfaceState('connecting', `Waiting for compatibility stream ${size}.${reason ? ` ${reason}` : ''}`)
   loadCameraOrbit()
@@ -816,10 +822,14 @@ function startCompatSurface(reason = '') {
 function stopCompatSurface() {
   if (!state.compatLive) return
   state.compatLive = false
+  state.compatHealthy = false
+  state.nativeStats = null
+  updateStats()
   state.surface = 'none'
   mjpegSurface.hidden = true
   mjpegSurface.removeAttribute('src')
-  useCompatStream.textContent = 'Use compatibility stream (works through VPN)'
+  useCompatStream.textContent = '改用 MJPEG 兼容画面'
+  useCompatStream.hidden = false
 }
 
 mjpegSurface.addEventListener('load', () => {
@@ -844,12 +854,11 @@ mjpegSurface.addEventListener('wheel', (event) => {
 }, { passive: false })
 
 function toggleStreamSurface() {
-  if (state.compatLive) { stopCompatSurface(); connectNativeSurface() }
-  else startCompatSurface('switched by hand')
+  if (state.compatLive) { connectNativeSurface() }
+  else startCompatSurface('手动切换至兼容画面。')
 }
 useCompatStream.addEventListener('click', toggleStreamSurface)
-streamSwitch.addEventListener('click', toggleStreamSurface)
-streamSwitch.title = 'Switch between the WebRTC stream and the compatibility stream'
+streamSwitch.title = '当前画面传输方式'
 
 
 // --- uploading your own USD ------------------------------------------------
@@ -1427,59 +1436,79 @@ function showNativeOverlay(title,text,canConnect=true) { streamTitle.textContent
 function lifecycleDetail(evt){const raw=evt?.message?.info||evt?.message?.message||'';return `${evt?.phase||'stream'}:${evt?.status||''}${raw?` ${String(raw).slice(0,80)}`:''}`}
 
 async function connectNativeSurface() {
+  // A hidden video drops frames and can occupy the single primary stream.
+  if (!launcher.hidden) return
   if (state.cfg?.renderer==='mock'||state.streamConnecting||state.streamLive)return
+  if(!state.cfg.nativeBundleAvailable){
+    startCompatSurface()
+    $('connectionExplanation').textContent='服务器缺少 NVIDIA WebRTC 客户端组件，暂时使用 MJPEG 兼容画面。请在服务器构建组件后再试。'
+    return
+  }
   stopCompatSurface()
   const generation = ++state.streamGeneration
   const current = () => generation === state.streamGeneration
-  streamSwitch.hidden=false;streamSwitch.textContent='Stream: WebRTC'
-  if(!state.cfg.nativeBundleAvailable){setSurfaceState('missing','Native SDK bundle missing. Run npm install && npm run build:native.');sdkValue.textContent='bundle missing';showNativeOverlay('Native SDK bundle missing','Build the NVIDIA WebRTC bundle on the server.',false);return}
+  streamSwitch.hidden=false;streamSwitch.textContent='WebRTC：正在连接'
+  connectStreamButton.textContent='正在连接 WebRTC…'
+  $('connectionExplanation').textContent='正在连接 NVIDIA Isaac Sim 的 WebRTC 服务；连接成功后才会显示已连接。'
   state.streamConnecting=true;setSurfaceState('connecting','Connecting directly through @nvidia/ov-web-rtc.');showNativeOverlay('Connecting to Isaac Sim',`${state.cfg.stream.host}:${state.cfg.stream.signalPort}`,false)
   try {
     if(!state.nativeModule)state.nativeModule=await import(`/native-sdk.js?v=${encodeURIComponent(state.cfg.version)}`)
-    if(!current()){state.streamConnecting=false;return}
+    if(!current())return
     sdkValue.textContent='@nvidia/ov-web-rtc 6.6.0';video.hidden=false;mockCanvas.hidden=true;mockLegend.hidden=true
     await state.nativeModule.connectNativeStream({
       videoElementId:'remote-video',audioElementId:'remote-audio',signalingServer:state.cfg.stream.host,signalingPort:state.cfg.stream.signalPort,signalingPath:state.cfg.stream.signalPath||'',mediaServer:state.cfg.stream.host,mediaPort:state.cfg.stream.mediaPort,width:state.cfg.stream.width,height:state.cfg.stream.height,fps:state.cfg.stream.fps,
       callbacks:{
         onLifecycle:(evt)=>{const detail=lifecycleDetail(evt);if(evt.phase!=='update'||['error','warning','success'].includes(evt.status))logEvent('rtc',detail)},
         onLive:()=>{
+          if(!current())return
           state.streamConnecting=false
-          if(!current()){teardownNativeStream().catch(()=>{});return}
           state.streamLive=true;state.surface='native';streamOverlay.hidden=true
+          streamSwitch.textContent='当前：WebRTC 已连接'
+          connectStreamButton.textContent='WebRTC 已连接';connectStreamButton.disabled=true
+          disconnectStreamButton.disabled=false
+          $('connectionExplanation').textContent='已连接 NVIDIA Isaac Sim 的 WebRTC 服务。实际清晰度与帧率以接收画面和统计为准。'
           setSurfaceState('live','Native WebRTC stream is live.');video.play().catch(()=>{});refreshModeText()
         },
         onStopped:()=>{
-          state.streamLive=false;state.streamConnecting=false
           if(!current()||state.compatLive)return
+          state.streamLive=false;state.streamConnecting=false;state.surface='none'
+          streamSwitch.textContent='画面已断开';connectStreamButton.textContent='重新连接 WebRTC'
+          $('connectionExplanation').textContent='WebRTC 连接已停止。可重新连接，或改用 MJPEG 兼容画面。'
           setSurfaceState('error','WebRTC stream stopped.');showNativeOverlay('Stream disconnected','Reconnect when Isaac is ready.',true)
         },
         onError:(msg)=>{
+          if(!current()||state.compatLive)return
           state.streamLive=false;state.streamConnecting=false
           logEvent('rtc-error',String(msg?.info||msg?.message||'WebRTC error'))
-          if(!current()||state.compatLive)return
-          startCompatSurface('WebRTC media did not arrive.')
+          startCompatSurface(`WebRTC 未收到画面，已自动回退。错误：${String(msg?.info||msg?.message||'未提供错误详情').slice(0,180)}`)
         },
-        onStats:updateStats,onCustomEvent:(msg)=>logEvent('kit-event',JSON.stringify(msg).slice(0,120)),
+        onStats:(stats)=>{if(current()){state.nativeStats=stats;updateStats(stats)}},onCustomEvent:(msg)=>logEvent('kit-event',JSON.stringify(msg).slice(0,120)),
       },
     })
   } catch(err){
+    if(!current())return
     state.streamLive=false;state.streamConnecting=false;logEvent('rtc-error',err.message)
-    if(current()&&!state.compatLive)startCompatSurface('WebRTC could not start.')
+    if(current()&&!state.compatLive)startCompatSurface(`WebRTC 启动失败，已自动回退。错误：${String(err.message).slice(0,180)}`)
   }
 }
 
 async function teardownNativeStream(){
-  try{await state.nativeModule?.disconnectNativeStream?.()}catch{}
   state.streamLive=false;state.streamConnecting=false
+  state.nativeStats=null;updateStats()
   video.hidden=true
+  try{await state.nativeModule?.disconnectNativeStream?.()}catch{}
 }
 
 async function disconnectNativeSurface(){
   if(state.cfg?.renderer==='mock')return
+  const generation = ++state.streamGeneration
+  stopCompatSurface()
   await teardownNativeStream()
-  // Never leave the page with nothing to look at.
-  if(state.cfg?.renderer==='mjpeg'){startCompatSurface('WebRTC disconnected.');return}
-  setSurfaceState('idle','Native stream disconnected.');showNativeOverlay('Stream disconnected','Connect again when Isaac is ready.',true)
+  if(generation !== state.streamGeneration)return
+  state.surface='none'
+  streamSwitch.textContent='画面已断开';connectStreamButton.textContent='连接 WebRTC'
+  $('connectionExplanation').textContent='当前没有连接画面。断开画面不会关闭服务器或停止仿真。'
+  setSurfaceState('idle','画面已断开');showNativeOverlay('画面已断开','可以连接 WebRTC，或改用 MJPEG 兼容画面。',true)
 }
 connectStreamButton.addEventListener('click',connectNativeSurface);disconnectStreamButton.addEventListener('click',disconnectNativeSurface)
 
@@ -1518,12 +1547,22 @@ async function boot() {
   else openLauncher()
   if(state.cfg.renderer==='mock')startMockSurface()
   else if(state.cfg.renderer==='mjpeg')startCompatSurface()
-  else {showNativeOverlay('Connecting to Isaac Sim','Falling back to the compatibility stream if WebRTC media cannot reach this browser.',false);await connectNativeSurface()}
+  else {showNativeOverlay('等待进入体验','选择世界和伙伴后连接WebRTC画面。',false)}
   await refreshStatus()
   connectAssistant()
 }
 
 setInterval(()=>{if(state.mode==='robot'&&state.pressed.size>0)sendMotion(computeMotion(),'heartbeat')},100)
+// Local diagnostic feedback: decoded video, not merely successful signaling.
+setInterval(()=>{
+  if(state.cfg?.renderer!=='native')return
+  const quality=video.getVideoPlaybackQuality?.()
+  fetch('/api/stream/client-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    surface:state.surface,width:video.videoWidth,height:video.videoHeight,
+    frames:quality?.totalVideoFrames||0,dropped:quality?.droppedVideoFrames||0,
+    time:video.currentTime,fps:state.nativeStats?.fps,mbps:state.nativeStats?.currentBitrate,
+  })}).catch(()=>{})
+},5000)
 
 // Camera keys in compatibility mode: A/D orbit, W/S dolly, Q/E pitch.
 setInterval(() => {

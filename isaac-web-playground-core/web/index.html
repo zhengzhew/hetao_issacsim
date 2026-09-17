@@ -37,7 +37,7 @@
           <span id="sceneSubtitle" class="scene-subtitle">选一个世界和机器人伙伴</span>
         </div>
         <div class="viewer-actions">
-          <button id="streamSwitch" class="ghost-mini" hidden>Stream: -</button>
+          <span id="streamSwitch" class="ghost-mini" role="status" aria-live="polite" hidden>画面未连接</span>
           <span id="modeChip" class="mode-chip">看看世界</span>
           <button id="changeSetupTop" class="ghost-mini">⌂ 换个世界</button>
         </div>
@@ -49,10 +49,11 @@
           <h1 id="streamTitle">实验室正在准备中</h1>
           <p id="streamText">连接好 Isaac Sim 后，真实仿真画面就会出现在这里。</p>
           <div class="overlay-actions">
-            <button id="connectStream" class="primary">连接画面</button>
-            <button id="disconnectStream" class="secondary" disabled>断开连接</button>
+            <button id="connectStream" class="primary">连接 WebRTC</button>
+            <button id="disconnectStream" class="secondary" disabled>断开画面</button>
           </div>
-          <button id="useCompatStream" class="text-button compat-switch">Use compatibility stream (works through VPN)</button>
+          <button id="useCompatStream" class="text-button compat-switch">改用 MJPEG 兼容画面</button>
+          <p id="connectionExplanation" role="status">选择世界和伙伴后进入体验，再连接画面。</p>
           <span id="streamEndpoint" class="mono"></span>
         </div>
       </div>
@@ -214,7 +215,7 @@
             <div id="delivery" class="delivery">Camera mode: robot motion is idle.</div>
           </div>
           <div class="diag-section event-section">
-            <div class="event-head"><div class="eyebrow">EVENTS</div><button id="clearLog" class="text-button">清空</button></div>
+            <div class="event-head"><div class="eyebrow">操作与连接日志（motion / STOP 是控制指令，不代表画面已连接）</div><button id="clearLog" class="text-button">清空</button></div>
             <div id="eventLog" class="event-log"><div class="event muted-event">Waiting...</div></div>
           </div>
         </div>

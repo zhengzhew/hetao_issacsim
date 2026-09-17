@@ -813,7 +813,22 @@ function serveStatic(pathname, res) {
   stream.pipe(res)
 }
 
+let nativeClientReport = null
 async function handle(req, res, url) {
+  if (url.pathname === '/api/stream/client-report' && req.method === 'GET') {
+    return json(res, 200, { report: nativeClientReport })
+  }
+  if (url.pathname === '/api/stream/client-report' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req)
+      const report = { at: Date.now(), surface: String(body.surface || '').slice(0, 24) }
+      for (const key of ['width', 'height', 'frames', 'time', 'fps', 'mbps', 'dropped']) {
+        if (Number.isFinite(body[key]) && body[key] >= 0) report[key] = body[key]
+      }
+      nativeClientReport = report
+      return json(res, 200, { ok: true })
+    } catch { return json(res, 400, { ok: false }) }
+  }
 
   if (url.pathname === '/api/config' && req.method === 'GET') {
     return json(res, 200, {

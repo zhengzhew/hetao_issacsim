@@ -32,7 +32,7 @@ export async function connectNativeStream(options = {}) {
     mic: false,
     cursor: 'free',
     nativeTouchEvents: true,
-    fitStreamResolution: true,
+    fitStreamResolution: false,
     width: Number(options.width || 1920),
     height: Number(options.height || 1080),
     fps: Number(options.fps || 60),

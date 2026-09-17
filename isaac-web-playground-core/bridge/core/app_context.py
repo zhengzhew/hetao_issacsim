@@ -86,7 +86,7 @@ from isaacsim import SimulationApp
 # thrown away; WebRTC wants its own resolution and gets 1280x720.
 def _quantise(value: int) -> int:
     """capture_frame rounds down to a multiple of 16; match it exactly."""
-    return max(160, (int(value) // 16) * 16)
+    return 1080 if int(value) == 1080 else max(160, (int(value) // 16) * 16)
 
 
 _render_w = _quantise(ARGS.render_width or (ARGS.capture_width if not ARGS.livestream else 1280))
@@ -133,6 +133,9 @@ if ARGS.livestream:
     kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/publicIp", ARGS.public_ip)
     kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/signalPort", ARGS.signal_port)
     kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/streamPort", ARGS.stream_port)
+    kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/streamType", "webrtc")
+    kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/targetFps", int(os.environ.get("ISAAC_STREAM_FPS", "60")))
+    kit.set_setting("/exts/omni.kit.livestream.app/primaryStream/enableEventTracing", False)
     # 5.x aliases.
     kit.set_setting("/app/livestream/publicEndpointAddress", ARGS.public_ip)
     kit.set_setting("/app/livestream/port", ARGS.signal_port)

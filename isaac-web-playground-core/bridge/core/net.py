@@ -6,7 +6,7 @@ from .app_context import (ARGS, CONFIG, json, kit, math, omni, queue, socket,
 from . import catalog, session
 from .catalog import reload_catalog
 from .uploads import inspect_asset
-from .streaming import CAMERA, _CAPTURE, _capture_available, apply_camera, camera_defaults, capture_frame, frame_robot
+from .streaming import CAMERA, _CAPTURE, _capture_available, apply_camera, camera_defaults, capture_frame, finish_capture, frame_robot
 from .teleop import TELEOP, set_teleop_calibration, teleop_disengage, teleop_engage, teleop_sample, teleop_status, enforce_teleop_watchdog
 from .session import launch_session, robot_info, session_info
 from .activity import ACTIVITY, idle_seconds, note_activity, throttle_when_idle
@@ -215,6 +215,8 @@ OP_TIMEOUTS = {"capture_frame": 20.0, "launch_session": 300.0, "inspect_asset": 
 
 
 def submit(op: str, args: dict, timeout: float | None = None):
+    if op == "capture_frame":
+        args = dict(args or {}, _defer_encode=True)
     if timeout is None:
         timeout = OP_TIMEOUTS.get(op, 60.0)
     reply: "queue.Queue[tuple[bool, object]]" = queue.Queue(maxsize=1)
@@ -227,7 +229,7 @@ def submit(op: str, args: dict, timeout: float | None = None):
     except queue.Empty:
         raise RuntimeError(f"{op} did not finish within {timeout:g}s") from None
     if ok:
-        return payload
+        return finish_capture(payload) if op == "capture_frame" else payload
     raise RuntimeError(payload)
 
 
@@ -323,4 +325,3 @@ class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = sys.platform != "win32"
     daemon_threads = True
     address_family = socket.AF_INET
-

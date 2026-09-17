@@ -119,13 +119,18 @@ def _encode_frame(rgb: "np.ndarray", quality: int) -> tuple[str, bytes]:
             from PIL import Image
 
             buffer = io.BytesIO()
-            Image.fromarray(rgb).save(buffer, format="JPEG", quality=quality, optimize=False)
+            # Replicator supplies contiguous RGBA. Pillow shares that buffer,
+            # then converts in C, avoiding NumPy's costly strided RGB copy.
+            picture = Image.fromarray(rgb)
+            if picture.mode != "RGB":
+                picture = picture.convert("RGB")
+            picture.save(buffer, format="JPEG", quality=quality, optimize=False)
             _CAPTURE["encoder"] = "jpeg"
             return "image/jpeg", buffer.getvalue()
         except Exception as exc:
             _CAPTURE["encoder"] = "png"
             print(f"[stage2] Pillow unavailable, falling back to PNG frames: {exc}", flush=True)
-    return _encode_png(rgb)
+    return _encode_png(np.ascontiguousarray(rgb[:, :, :3]))
 
 
 def capture_frame(args: dict) -> dict:
@@ -164,15 +169,28 @@ def capture_frame(args: dict) -> dict:
         problem = f"shape={getattr(candidate, 'shape', None)} type={type(data).__name__}"
     if frame is None:
         raise RuntimeError(f"viewport annotator returned an unusable frame after 4 updates: {problem}")
-    rgb = np.ascontiguousarray(frame[:, :, :3].astype(np.uint8))
-    mime, payload = _encode_frame(rgb, quality)
-    return {
-        "mime": mime,
+    # Preserve packed RGB/RGBA; avoid a redundant uint8 copy and channel slice.
+    pixels = frame if frame.shape[2] in (3, 4) else frame[:, :, :3]
+    rgb = np.ascontiguousarray(pixels, dtype=np.uint8)
+    if args.get("_defer_encode"):
+        # Only Kit access stays on the main thread. Own the pixels before the
+        # annotator can refresh its buffer while the request thread encodes.
+        rgb = rgb.copy()
+    result = {
+        "_pixels": rgb,
+        "_quality": quality,
         "width": int(rgb.shape[1]),
         "height": int(rgb.shape[0]),
-        "encoder": _CAPTURE["encoder"],
-        "data": base64.b64encode(payload).decode("ascii"),
     }
+    return result if args.get("_defer_encode") else finish_capture(result)
+
+
+def finish_capture(result: dict) -> dict:
+    """Encode an owned pixel buffer; never access Kit from this worker."""
+    mime, payload = _encode_frame(result.pop("_pixels"), result.pop("_quality"))
+    result.update(mime=mime, encoder=_CAPTURE["encoder"],
+                  data=base64.b64encode(payload).decode("ascii"))
+    return result
 
 
 # --- camera, for the compatibility path -----------------------------------

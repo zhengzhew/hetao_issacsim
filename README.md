@@ -43,6 +43,8 @@ Windows 本机部署请使用 [原生部署说明](isaac-web-playground-core/dep
 - 2026-09-16：Windows 本机 Isaac Sim 6.0.1 + MJPEG 已通过四组场景/机器人加载和图像响应检查；Jetbot 前进、Kaya 横移均测得真实位姿变化。浏览器已确认 Grid/Jetbot 画面、启动与停止交互。另一台设备的局域网访问尚待确认。
 - 模型服务与实体机械臂未验证；MicroDuck 未集成。原文档的性能数字是原参考部署记录，不代表本机性能。
 
+- 2026-09-17：采用 WebRTC＋GPU 编码为主方案，Windows 默认 1080p、目标 60 FPS，保留 MJPEG 备用。本机网格场景前台采样平均约 52.2 FPS，无新增丢帧；跨设备和异地网络尚待验证。见 [验证记录](isaac-web-playground-core/deploy/windows/webrtc-verification-20260917.md)。
+
 ## 代码与资产来源
 
 保留交付材料中的原始来源和许可说明。本仓库不新增对第三方代码或 NVIDIA 资产的授权；复用与分发时应核对对应材料的许可。

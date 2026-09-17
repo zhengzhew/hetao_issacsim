@@ -1,32 +1,39 @@
 # Windows 本机部署
 
-Node.js 与 Isaac Sim 在同一台 Windows 电脑运行，使用 MJPEG 回传画面。无需 WSL 或端口代理。
+Node.js 与 NVIDIA Isaac Sim 在同一台 Windows 电脑运行，默认采用原生 WebRTC 视频传输与 GPU 硬件编码，保留 MJPEG 兼容备用。无需 WSL 或端口代理。
 
 ## 启动
 
-将 Isaac Sim 6.0.1 解压到 `D:\IsaacSim\6.0.1`，确认其中存在 `python.bat`。在已登录的 Windows 桌面会话中运行：
+将 Isaac Sim 6.0.1 安装到 `D:\IsaacSim\6.0.1`，或通过 `-IsaacDir` 指定安装目录。在 `isaac-web-playground-core` 目录中首次安装依赖并构建客户端：
 
 ```powershell
+npm ci
+npm run build:native
 powershell -ExecutionPolicy Bypass -File .\deploy\windows\start-native.ps1
 ```
 
-可用 `-IsaacDir` 指定其他安装目录。默认采用 grid 场景和 Jetbot、单 GPU，1920×1080 输出分辨率（已修正此前对齐为 1920×1072 的问题）、30 FPS 采集上限和 JPEG 质量 90。30 FPS 是目标上限，不是实测帧率保证；本机测试见 [画质与性能记录](performance-20260917.md)。隐藏的 Kit 视口保持 640×352，网页图像由独立 Replicator 渲染产品以目标分辨率生成。
+默认 grid 场景、Jetbot、单 GPU、1920×1080 和目标 60 FPS。目标不是实际帧率保证；本机前台 30 秒验证平均约 52.2 FPS，见 [WebRTC 验证记录](webrtc-verification-20260917.md)。原生模式关闭空闲降频，无观看者时仍可能占用 GPU；活动结束后应停止服务。
 
-需要降低负载时，启动参数可改为 `-CaptureWidth 1280 -CaptureHeight 720 -CaptureFps 30 -CaptureQuality 85`。只改变现有串流、不重启仿真时可运行：
+浏览器打开 `http://127.0.0.1:8080`，选择场景与伙伴后进入体验，再建立原生连接。测试时只保留一个体验页面，避免争用原生主串流。页面显示当前传输方式，失败时回退 MJPEG 并显示原因。断开画面不会停止服务器或仿真。
+
+脚本默认 `-Renderer native -StreamHost 127.0.0.1`，只验证了本机原生连接。局域网部署需设置客户端可达的 `-StreamHost <服务器局域网IP>`，并验证 TCP 49100 信令与 UDP 47998 媒体端口；既有 TCP 8080 网页规则不能替代媒体规则。脚本不会自动添加防火墙规则，异地网络、TURN 与多门店并发尚未验收。
+
+需要降低负载，可在停止现有项目进程后，带 `-CaptureWidth 1280 -CaptureHeight 720 -CaptureFps 30` 启动。WebRTC 分辨率和帧率由启动参数决定，`/api/stream/settings` 仅调整 MJPEG 备用采集，不会修改原生视频。
+
+完整切换到 MJPEG 服务时，停止现有项目进程，再运行：
 
 ```powershell
-Invoke-RestMethod -Method Post http://localhost:8080/api/stream/settings -ContentType application/json -Body '{"width":1280,"height":720,"fps":30,"quality":85}'
+powershell -ExecutionPolicy Bypass -File .\deploy\windows\start-native.ps1 -Renderer mjpeg -CaptureFps 30
 ```
 
-恢复高清档时将请求改为 `{"width":1920,"height":1080,"fps":30,"quality":90}`。运行时设置会在网页服务重启后恢复启动参数；`start-native.ps1` 中的参数控制下次启动。
-
-浏览器打开 `http://localhost:8080`。只启动其中一部分可传入 `-Component Web` 或 `-Component Bridge`。真实仿真尚未就绪时，单独启动网页不会生成模拟画面。
+MJPEG 使用独立采集与后台 JPEG 编码，`-CaptureQuality` 仅影响该备用路径。使用 `-Component Web` 或 `-Component Bridge` 可单独启动组件，两者需传入一致的串流参数。脚本拒绝占用中的端口，不会强行终止其他进程。
 
 ## 状态与日志
 
 - 日志位于项目 `logs/`，每次启动使用新的时间戳。
 - 启动进程 PID 记录在 `run/`；PID 可能复用，停止前应核对实际进程命令行。
 - `/api/status` 用于检查网页与桥接状态，`/api/session` 查看已加载场景和机器人。
+- `/api/stream/client-report` 保留最近一份浏览器视频报告，供检查尺寸、累计帧与丢帧使用；多页面会覆盖，不能作为每个门店独立监控。
 - 网页可访问不代表仿真完成启动，需继续验证实时画面与运动控制。
 - 网页监听所有网卡，桥接仅监听本机；脚本不会修改防火墙、设置公网转发或开机自动登录。
 - 局域网访问还需验证 Windows 防火墙及客户端到主机的连通性。
