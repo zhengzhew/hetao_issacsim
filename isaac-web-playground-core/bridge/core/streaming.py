@@ -133,7 +133,9 @@ def capture_frame(args: dict) -> dict:
     # Quantised so that a client tracking its window size cannot force a
     # render-product rebuild on every frame.
     width = max(160, min(1920, int(args.get("width") or ARGS.capture_width))) // 16 * 16
-    height = max(120, min(1080, int(args.get("height") or ARGS.capture_height))) // 16 * 16
+    requested_height = max(120, min(1080, int(args.get("height") or ARGS.capture_height)))
+    # JPEG capture supports full HD; preserve 1080 instead of truncating to 1072.
+    height = 1080 if requested_height == 1080 else requested_height // 16 * 16
     quality = max(20, min(95, int(args.get("quality") or 60)))
     _ensure_capture(width, height)
     frame = None
@@ -305,4 +307,3 @@ def camera_defaults() -> dict:
         "eye": list(scene.get("camera_eye") or [4.0, -5.0, 3.0]),
         "target": list(scene.get("camera_target") or [0.0, 0.0, 0.4]),
     }
-

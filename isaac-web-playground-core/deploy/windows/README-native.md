@@ -10,7 +10,7 @@ Node.js 与 Isaac Sim 在同一台 Windows 电脑运行，使用 MJPEG 回传画
 powershell -ExecutionPolicy Bypass -File .\deploy\windows\start-native.ps1
 ```
 
-可用 `-IsaacDir` 指定其他安装目录。默认采用 grid 场景和 Jetbot、单 GPU，1920×1080 请求分辨率（实际按 16 像素对齐为 1920×1072）、30 FPS 采集上限和 JPEG 质量 90。30 FPS 是目标上限，不是实测帧率保证；本机测试见 [画质与性能记录](performance-20260917.md)。隐藏的 Kit 视口保持 640×352，网页图像由独立 Replicator 渲染产品以目标分辨率生成。
+可用 `-IsaacDir` 指定其他安装目录。默认采用 grid 场景和 Jetbot、单 GPU，1920×1080 输出分辨率（已修正此前对齐为 1920×1072 的问题）、30 FPS 采集上限和 JPEG 质量 90。30 FPS 是目标上限，不是实测帧率保证；本机测试见 [画质与性能记录](performance-20260917.md)。隐藏的 Kit 视口保持 640×352，网页图像由独立 Replicator 渲染产品以目标分辨率生成。
 
 需要降低负载时，启动参数可改为 `-CaptureWidth 1280 -CaptureHeight 720 -CaptureFps 30 -CaptureQuality 85`。只改变现有串流、不重启仿真时可运行：
 

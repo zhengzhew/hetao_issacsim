@@ -252,7 +252,7 @@ const frameHub = {
     try {
       while (this.clients.size > 0) {
         // Read live settings each frame; existing streams must adopt FPS changes.
-        const interval = 1000 / Math.min(30, Math.max(1, config.captureFps))
+        const interval = 1000 / Math.min(60, Math.max(1, config.captureFps))
         const startedAt = Date.now()
         try {
           const frame = await withDeadline(captureChannel.send('capture_frame', {
@@ -1109,7 +1109,7 @@ async function handle(req, res, url) {
       const next = {
         width: body.width === undefined ? config.captureWidth : num(body.width, 'width', { min: 320, max: 1920, required: true }),
         height: body.height === undefined ? config.captureHeight : num(body.height, 'height', { min: 240, max: 1080, required: true }),
-        fps: body.fps === undefined ? config.captureFps : num(body.fps, 'fps', { min: 1, max: 30, required: true }),
+        fps: body.fps === undefined ? config.captureFps : num(body.fps, 'fps', { min: 1, max: 60, required: true }),
         quality: body.quality === undefined ? config.captureQuality : num(body.quality, 'quality', { min: 20, max: 95, required: true }),
       }
       config.captureWidth = Math.round(next.width)

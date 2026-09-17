@@ -7,7 +7,7 @@ param(
     [string]$Robot = 'jetbot',
     [ValidateRange(320,1920)][int]$CaptureWidth = 1920,
     [ValidateRange(240,1080)][int]$CaptureHeight = 1080,
-    [ValidateRange(1,30)][int]$CaptureFps = 30,
+    [ValidateRange(1,60)][int]$CaptureFps = 30,
     [ValidateRange(20,95)][int]$CaptureQuality = 90
 )
 $ErrorActionPreference = 'Stop'
