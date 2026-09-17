@@ -10,7 +10,15 @@ Node.js 与 Isaac Sim 在同一台 Windows 电脑运行，使用 MJPEG 回传画
 powershell -ExecutionPolicy Bypass -File .\deploy\windows\start-native.ps1
 ```
 
-可用 `-IsaacDir` 指定其他安装目录。首次采用 grid 场景和 Jetbot、单 GPU、640×360 请求分辨率（桥接会按 16 像素对齐）及 10 FPS 采集上限，以便在 8GB 显存设备上验证实际可运行性。这些设置不是兼容性或性能保证。
+可用 `-IsaacDir` 指定其他安装目录。默认采用 grid 场景和 Jetbot、单 GPU，1920×1080 请求分辨率（实际按 16 像素对齐为 1920×1072）、30 FPS 采集上限和 JPEG 质量 90。30 FPS 是目标上限，不是实测帧率保证；本机测试见 [画质与性能记录](performance-20260917.md)。隐藏的 Kit 视口保持 640×352，网页图像由独立 Replicator 渲染产品以目标分辨率生成。
+
+需要降低负载时，启动参数可改为 `-CaptureWidth 1280 -CaptureHeight 720 -CaptureFps 30 -CaptureQuality 85`。只改变现有串流、不重启仿真时可运行：
+
+```powershell
+Invoke-RestMethod -Method Post http://localhost:8080/api/stream/settings -ContentType application/json -Body '{"width":1280,"height":720,"fps":30,"quality":85}'
+```
+
+恢复高清档时将请求改为 `{"width":1920,"height":1080,"fps":30,"quality":90}`。运行时设置会在网页服务重启后恢复启动参数；`start-native.ps1` 中的参数控制下次启动。
 
 浏览器打开 `http://localhost:8080`。只启动其中一部分可传入 `-Component Web` 或 `-Component Bridge`。真实仿真尚未就绪时，单独启动网页不会生成模拟画面。
 

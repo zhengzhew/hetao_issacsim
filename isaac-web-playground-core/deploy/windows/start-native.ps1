@@ -4,7 +4,11 @@ param(
     [int]$WebPort = 8080,
     [int]$BridgePort = 8765,
     [string]$Scene = 'grid',
-    [string]$Robot = 'jetbot'
+    [string]$Robot = 'jetbot',
+    [ValidateRange(320,1920)][int]$CaptureWidth = 1920,
+    [ValidateRange(240,1080)][int]$CaptureHeight = 1080,
+    [ValidateRange(1,30)][int]$CaptureFps = 30,
+    [ValidateRange(20,95)][int]$CaptureQuality = 90
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -42,9 +46,14 @@ if (-not $env:ISAAC_ASSET_ROOT) {
 }
 $env:ISAAC_DEFAULT_SCENE = $Scene
 $env:ISAAC_DEFAULT_ROBOT = $Robot
-$env:ISAAC_CAPTURE_WIDTH = '640'
-$env:ISAAC_CAPTURE_HEIGHT = '360'
-$env:ISAAC_CAPTURE_FPS = '10'
+$env:ISAAC_CAPTURE_WIDTH = [string]$CaptureWidth
+$env:ISAAC_CAPTURE_HEIGHT = [string]$CaptureHeight
+$env:ISAAC_CAPTURE_FPS = [string]$CaptureFps
+$env:ISAAC_CAPTURE_QUALITY = [string]$CaptureQuality
+# Keep the unused headless viewport small; Replicator renders the stream
+# independently at CaptureWidth/CaptureHeight, as in the measured setup.
+$env:ISAAC_RENDER_WIDTH = '640'
+$env:ISAAC_RENDER_HEIGHT = '360'
 $env:PORT = [string]$WebPort
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 

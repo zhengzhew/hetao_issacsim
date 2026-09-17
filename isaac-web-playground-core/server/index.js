@@ -249,9 +249,10 @@ const frameHub = {
 
   async run() {
     this.running = true
-    const interval = Math.max(40, Math.round(1000 / Math.max(1, config.captureFps)))
     try {
       while (this.clients.size > 0) {
+        // Read live settings each frame; existing streams must adopt FPS changes.
+        const interval = 1000 / Math.min(30, Math.max(1, config.captureFps))
         const startedAt = Date.now()
         try {
           const frame = await withDeadline(captureChannel.send('capture_frame', {
