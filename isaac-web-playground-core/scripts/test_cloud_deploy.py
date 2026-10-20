@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import io
 from unittest.mock import patch
 import importlib.util
 import json
@@ -21,6 +22,7 @@ def load(name):
 
 manage = load("manage")
 sim = load("sim_entry")
+health = load("health_sim")
 spec = importlib.util.spec_from_file_location("fetch_assets", ROOT / "scripts/fetch_challenge_assets.py")
 assets = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(assets)
@@ -66,6 +68,32 @@ class CloudTests(unittest.TestCase):
         bad = copy.deepcopy(healthy)
         bad["signaling"]["connected"] = False
         self.assertFalse(manage.ready_status(bad))
+
+    def test_sim_health_requires_real_ready_response_from_the_loop(self):
+        good = {"id": "health", "ok": True, "result": {"mock": False,
+                "session": {"status": "ready"}, "stream": {"livestream": True}}}
+        bad_mock = copy.deepcopy(good)
+        bad_mock["result"]["mock"] = True
+        bad_scene = copy.deepcopy(good)
+        bad_scene["result"]["session"]["status"] = "loading"
+        bad_id = {**good, "id": "other"}
+        config = {"stations": [{"id": "cloud-1", "bridgePort": 8765}]}
+        for reply, succeeds in [(good, True), (bad_mock, False), (bad_scene, False),
+                                (bad_id, False), ({"id": "health", "ok": False}, False)]:
+            with self.subTest(reply=reply), patch.object(health.socket, "create_connection") as connect:
+                sock = connect.return_value.__enter__.return_value
+                sock.makefile.return_value = io.BytesIO((json.dumps(reply) + "\n").encode())
+                if succeeds:
+                    health.probe(config, "cloud-1")
+                else:
+                    with self.assertRaises(ValueError):
+                        health.probe(config, "cloud-1")
+                request = json.loads(sock.sendall.call_args.args[0])
+                self.assertEqual(request["op"], "ping")
+                self.assertEqual(request["args"], {})
+        with patch.object(health.socket, "create_connection", side_effect=TimeoutError):
+            with self.assertRaises(TimeoutError):
+                health.probe(config, "cloud-1")
 
     def test_sim_uses_persistent_uploads_and_container_gpu_zero(self):
         with tempfile.TemporaryDirectory(prefix="isaac-cloud-test-") as folder:

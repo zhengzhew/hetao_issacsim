@@ -72,6 +72,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
     shm_size: 2gb
+    healthcheck:
+      test: ["CMD", "/isaac-sim/python.sh", "/app/deploy/cloud/health_sim.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 600s
+      retries: 4
     logging: *logging
     depends_on:
       worker:
@@ -79,7 +85,7 @@ services:
     environment:
       ACCEPT_EULA: ${ACCEPT_EULA:?Set ACCEPT_EULA=Y after reviewing the NVIDIA terms}
       PRIVACY_CONSENT: N
-      NVIDIA_DRIVER_CAPABILITIES: graphics,video,compute,utility,display
+      NVIDIA_DRIVER_CAPABILITIES: graphics,video,compute,utility,display,ngx
       ISAAC_PLATFORM_CONFIG: /config/platform.json
       ISAAC_PLATFORM_DATA_DIR: /data/stations
       ISAAC_STATION_ID: cloud-1

@@ -5,7 +5,7 @@ WORKDIR /app
 COPY bridge ./bridge
 COPY third_party ./third_party
 COPY configs/scenes.json configs/robots.json configs/challenges.json ./configs/
-COPY deploy/cloud/sim_entry.py ./deploy/cloud/sim_entry.py
+COPY deploy/cloud/sim_entry.py deploy/cloud/health_sim.py ./deploy/cloud/
 ARG PIP_INDEX_URL=https://pypi.org/simple
 COPY deploy/cloud/requirements-sim.txt ./deploy/cloud/requirements-sim.txt
 RUN --mount=from=assets-cache,target=/asset-cache,ro if [ -d /asset-cache/wheels ]; then /isaac-sim/python.sh -m pip install --no-deps --require-hashes --no-index --find-links /asset-cache/wheels --target /app/run/python-deps -r deploy/cloud/requirements-sim.txt; else /isaac-sim/python.sh -m pip install --no-deps --require-hashes --index-url ${PIP_INDEX_URL} --target /app/run/python-deps -r deploy/cloud/requirements-sim.txt; fi

@@ -147,3 +147,7 @@ SHA256 匹配的资产；额外文件不会进入镜像，损坏文件会停止�
 若 PyPI 下载很慢，可在部署 `.env` 设置 `PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。ONNX Runtime Linux wheel 按官方 PyPI SHA256 锁定，替换镜像源不会跳过校验。
 
 也可将 requirements-sim.txt 中对应的 Linux CPython 3.12 wheel 放入 `ASSET_CACHE_DIR/wheels/`。存在 wheels 子目录时使用离线安装，仍强制校验清单中的 SHA256；不读取本机其他 Python 安装包。
+
+容器健康检查分别验证网页进程、worker HTTP 服务，以及仿真主循环的真实场景/串流状态。sim 的首次启动预留 10 分钟准备期；healthy 仍不代表浏览器已收到视频，视频验收必须在体验端进行。
+
+GPU 容器显式启用 `ngx` 驱动能力，让 NVIDIA Runtime 挂载宿主机的 `libnvidia-ngx.so`。缺少此能力时，仿真可能运行但 NGX/DLSS 初始化失败，画面出现明显噪点；不要只凭进程存活判断渲染正常。
