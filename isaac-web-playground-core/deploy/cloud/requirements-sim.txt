@@ -1,0 +1,2 @@
+# Linux x86_64, CPython 3.12 wheel; SHA256 from official PyPI metadata.
+onnxruntime==1.22.1 --hash=sha256:2d39a530aff1ec8d02e365f35e503193991417788641b184f5b1e8c9a6d5ce8d

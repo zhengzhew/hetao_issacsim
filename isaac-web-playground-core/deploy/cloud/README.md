@@ -143,3 +143,7 @@ python scripts/fetch_challenge_assets.py --export-cache run/asset-cache
 将这个目录上传到云端，例如 `/srv/hetao-isaac-assets`，在部署 `.env` 中加入
 `ASSET_CACHE_DIR=/srv/hetao-isaac-assets`，然后重新 build/up。构建仅复制清单中
 SHA256 匹配的资产；额外文件不会进入镜像，损坏文件会停止构建。缓存不提交 Git。
+
+若 PyPI 下载很慢，可在部署 `.env` 设置 `PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。ONNX Runtime Linux wheel 按官方 PyPI SHA256 锁定，替换镜像源不会跳过校验。
+
+也可将 requirements-sim.txt 中对应的 Linux CPython 3.12 wheel 放入 `ASSET_CACHE_DIR/wheels/`。存在 wheels 子目录时使用离线安装，仍强制校验清单中的 SHA256；不读取本机其他 Python 安装包。

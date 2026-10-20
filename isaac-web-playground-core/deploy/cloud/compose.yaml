@@ -62,8 +62,11 @@ services:
     build:
       context: ../..
       dockerfile: deploy/cloud/Dockerfile.sim
+      additional_contexts:
+        assets-cache: ${ASSET_CACHE_DIR:-./empty-assets}
       args:
         ISAAC_SIM_IMAGE: ${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     network_mode: host
     init: true
     restart: unless-stopped

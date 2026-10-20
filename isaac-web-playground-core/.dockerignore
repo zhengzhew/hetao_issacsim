@@ -30,3 +30,5 @@ web/native-sdk.js*
 !deploy/cloud/sim_entry.py
 !deploy/cloud/health.mjs
 **/__pycache__/**
+
+!deploy/cloud/requirements-sim.txt
