@@ -1,0 +1,126 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright')
+const base = process.env.TEST_BASE || 'http://127.0.0.1:8080'
+const output = path.resolve('run/duck-ui-check')
+await fs.mkdir(output, { recursive: true })
+const browser = await chromium.launch({ channel: 'msedge', headless: true })
+const page = await browser.newPage({viewport:{width:1440,height:1000}})
+const errors=[], checks=[]
+page.on('pageerror', error => errors.push(error.message))
+page.on('console', message => {
+  if (message.type()==='error' && /ReferenceError|TypeError|SyntaxError/.test(message.text())) errors.push(message.text())
+})
+const record=(name,result)=>{checks.push({name,result});console.log(name,JSON.stringify(result))}
+async function api(url) { const response=await page.request.get(base+url); assert(response.ok(),url);return response.json() }
+async function challenge() { return (await api('/api/challenges')).challenge }
+async function waitFor(check, message, seconds=15) {
+  const deadline=Date.now()+seconds*1000
+  while(Date.now()<deadline) {const value=await check();if(value)return value;await page.waitForTimeout(200)}
+  throw Error(message)
+}
+async function select(id) {
+  await page.locator('#childHome').click()
+  await page.locator('#sceneLibrary [data-scene-id="challenge-duck"]').click()
+  await page.locator('#nextStep').click()
+  await page.locator('[data-level-id="'+id+'"]').click()
+  await waitFor(async()=>await page.locator('#launchSession').isEnabled(),'Launch remains disabled')
+  const request=page.waitForResponse(r=>r.url().endsWith('/api/challenges/start')&&r.request().method()==='POST',{timeout:180000})
+  await page.locator('#launchSession').click()
+  const response=await request,result=await response.json()
+  assert.equal(result.ok,true,JSON.stringify(result))
+  assert.equal(result.session.robotId,'microduck')
+  await page.locator('#launcher').waitFor({state:'hidden',timeout:15000})
+  await waitFor(async()=>(await page.locator('#challengeName').textContent())===result.challenge.level.name,'Challenge UI did not update')
+  record('select '+id,{robot:result.session.robotId,ready:result.session.status,errors:[...errors]})
+}
+try {
+  await page.goto(base,{waitUntil:'domcontentloaded'})
+  await page.locator('#launcher').waitFor({state:'visible',timeout:20000})
+  assert.equal(await page.locator('#sceneLibrary button').count(),2)
+  await page.locator('#sceneLibrary [data-scene-id="challenge-duck"]').click()
+  await page.locator('#nextStep').click()
+  assert.equal(await page.locator('#robotLibrary button').count(),4)
+  await page.locator('#previousStep').click()
+  assert.equal(await page.locator('#sceneLibrary').isVisible(),true)
+  await page.locator('#childSound').click()
+  record('partner selection and previous/next',{errors:[...errors]})
+  await page.locator('#nextStep').click()
+  await page.route('**/api/challenges/start', route=>route.fulfill({
+    status:503,contentType:'application/json',body:JSON.stringify({ok:false,error:'TEST: bridge unavailable'})
+  }))
+  await page.locator('#launchSession').click()
+  await page.locator('#launchError').waitFor({state:'visible'})
+  await page.waitForTimeout(900)
+  assert.equal(await page.locator('#launchError').isVisible(),true)
+  assert.equal(await page.locator('#launchSession').isEnabled(),true)
+  record('simulated launch failure keeps a visible retry message',{visible:true})
+  await page.unroute('**/api/challenges/start')
+  await select('duck-move')
+  assert.equal(await page.locator('#launchError').isVisible(),false)
+  const forward=page.locator('.key[data-key="w"]')
+  await forward.scrollIntoViewIfNeeded()
+  const box=await forward.boundingBox()
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2)
+  await page.mouse.down()
+  try { await waitFor(async()=>{const c=await challenge();assert(!c.error,c.error);return c.telemetry.robot.p[0]>.54},'Duck did not move forward',22) }
+  finally { await page.mouse.up() }
+  const walked=await waitFor(async()=>{const c=await challenge();return c.complete&&c},'Duck did not settle in goal',12)
+  record('duck walking via held UI button',{complete:walked.complete,p:walked.telemetry.robot.p})
+  await page.screenshot({path:path.join(output,'duck-move.png'),fullPage:true})
+  const playback=await page.locator('#remote-video').evaluate(v=>({width:v.videoWidth,height:v.videoHeight,time:v.currentTime,frames:v.getVideoPlaybackQuality?.().totalVideoFrames||0}))
+  record('browser video sample',playback)
+  await select('duck-posture')
+  await page.locator('#challengeActions button').filter({hasText:'坐下'}).click()
+  const seated=await waitFor(async()=>{const c=await challenge();return c.telemetry.robot.p[2]<.095&&c},'Duck did not sit',12)
+  await page.waitForTimeout(1200)
+  record('duck sit via UI',{p:seated.telemetry.robot.p})
+  await page.locator('#challengeActions button').filter({hasText:'站起来'}).click()
+  const stood=await waitFor(async()=>{const c=await challenge();return c.complete&&c},'Duck posture did not complete',15)
+  record('duck stand via UI',{complete:stood.complete,p:stood.telemetry.robot.p})
+  await page.locator('#chooseChallenge').click()
+  await page.locator('#launcher').waitFor({state:'visible'})
+  record('choose challenge button',{visible:true})
+  await select('duck-roll')
+  await page.locator('#challengeActions button').filter({hasText:'前滚翻'}).click()
+  await page.waitForTimeout(4500)
+  const rolled=await challenge()
+  record('duck roll attempt via UI',{complete:rolled.complete,error:rolled.error,message:rolled.message,p:rolled.telemetry.robot.p})
+  await page.screenshot({path:path.join(output,'duck-roll.png'),fullPage:true})
+  const retryResponse=page.waitForResponse(r=>r.url().endsWith('/api/challenges/start')&&r.request().method()==='POST',{timeout:180000})
+  await page.locator('#retryChallenge').click()
+  assert.equal((await (await retryResponse).json()).ok,true)
+  await page.waitForTimeout(2000)
+  const reset=await challenge()
+  record('retry after roll',{complete:reset.complete,p:reset.telemetry.robot.p})
+  assert.equal(reset.complete,false)
+  assert(reset.telemetry.robot.p[2]>.1)
+  const mobileContext=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true})
+  const mobile=await mobileContext.newPage()
+  mobile.on('pageerror',error=>errors.push(error.message))
+  await mobile.goto(base,{waitUntil:'domcontentloaded'})
+  await mobile.locator('#launcher').waitFor({state:'visible'})
+  await mobile.locator('#childSound').tap()
+  await mobile.locator('[data-scene-id="challenge-duck"]').tap()
+  await mobile.locator('#nextStep').tap()
+  await mobile.locator('[data-level-id="duck-posture"]').tap()
+  assert.equal(await mobile.locator('[data-level-id="duck-posture"]').getAttribute('aria-pressed'),'true')
+  await mobile.locator('#previousStep').tap()
+  await mobile.locator('#childHome').tap()
+  assert.equal(await mobile.locator('#sceneLibrary').isVisible(),true)
+  await mobile.screenshot({path:path.join(output,'mobile-partners.png'),fullPage:true})
+  record('mobile touch partner and challenge selection',{errors:[...errors]})
+  await mobileContext.close()
+  assert.deepEqual(errors,[])
+  record('PASS',{errors})
+} catch(error) {
+  record('FAIL',{message:error.message,errors})
+  await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{})
+  throw error
+} finally {
+  await fs.writeFile(path.join(output,'results.json'),JSON.stringify({checks,errors},null,2))
+  await browser.close()
+}

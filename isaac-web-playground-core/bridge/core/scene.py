@@ -25,6 +25,9 @@ def load_scene(scene: dict) -> str:
     for _ in range(3):
         kit.update()
     _release_capture()
+    if scene.get("asset_path") == "procedural://challenge":
+        from .challenges import create_scene
+        return create_scene(scene)
     url = asset_url(scene["asset_path"])
     print(f"[stage2] opening scene id={scene['id']} url={url}", flush=True)
     result = open_stage(url)

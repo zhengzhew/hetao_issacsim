@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "levels": [
+    {
+      "id": "arm-block",
+      "track": "so101",
+      "name": "方块搬家",
+      "instruction": "夹起左边的黄色方块，放进右边的绿色区域，再松开夹爪。",
+      "goal": "方块落稳在绿色区域",
+      "robotId": "so101",
+      "sceneId": "challenge-arm",
+      "kind": "block"
+    },
+    {
+      "id": "arm-dice",
+      "track": "so101",
+      "name": "幸运骰子",
+      "instruction": "用机械臂夹起骰子并抬高，自己转动手腕、张开夹爪，把骰子抛出。等它落稳，挑战朝上点数 6。",
+      "goal": "骰子落稳，朝上是 6",
+      "robotId": "so101",
+      "sceneId": "challenge-arm",
+      "kind": "dice",
+      "target": 6
+    },
+    {
+      "id": "arm-fruit",
+      "track": "so101",
+      "name": "水果分拣员",
+      "instruction": "把两个红苹果放进红色区域，两个橙子放进橙色区域。",
+      "goal": "4 个水果全部分类并放稳",
+      "robotId": "so101",
+      "sceneId": "challenge-arm",
+      "kind": "fruit"
+    },
+    {
+      "id": "duck-move",
+      "track": "microduck",
+      "name": "走到目标区",
+      "instruction": "按住方向键，让小鸭子走进绿色目标区，松开并站稳。",
+      "goal": "走到目标区并站稳",
+      "robotId": "microduck",
+      "sceneId": "challenge-duck",
+      "kind": "move"
+    },
+    {
+      "id": "duck-posture",
+      "track": "microduck",
+      "name": "坐下，再站起",
+      "instruction": "先点坐下，等小鸭子坐稳，再点站起来。",
+      "goal": "完成坐下和站起两个动作",
+      "robotId": "microduck",
+      "sceneId": "challenge-duck",
+      "kind": "posture"
+    },
+    {
+      "id": "duck-roll",
+      "track": "microduck",
+      "name": "翻滚小勇士",
+      "instruction": "点前滚翻试试看！如果摔倒，点重新挑战再试一次。",
+      "goal": "尝试前滚翻，翻过一周并重新站稳",
+      "robotId": "microduck",
+      "sceneId": "challenge-duck",
+      "kind": "roll"
+    },
+    {
+      "id": "duck-football",
+      "track": "microduck",
+      "name": "足球小射手",
+      "instruction": "足球就在右脚前，点踢球试试看！也可以按住方向键调整位置，再把足球踢进球门。",
+      "goal": "用右脚踢球，让足球完整越过球门线",
+      "robotId": "microduck",
+      "sceneId": "challenge-duck",
+      "kind": "kick"
+    }
+  ]
+}

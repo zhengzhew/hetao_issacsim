@@ -363,6 +363,9 @@ class JointPositionAdapter(RobotAdapter):
         # when the spawn happens to be the origin, which is exactly how it hid.
         self._place_at(prim_path, spawn)
         self.spawn = spawn
+        if self.config.get("grip_pads"):
+            from .arm_contact import add_grip_pads
+            add_grip_pads(omni.usd.get_context().get_stage(), prim_path)
         self._apply_physics_tuning(prim_path)
         self.apply_drive_gains()
         if self.config.get("fix_root", True):
@@ -402,7 +405,7 @@ class JointPositionAdapter(RobotAdapter):
         try:
             from isaacsim.core.simulation_manager import SimulationManager
             policy_spec = self.config.get("policy") or {}
-            physics_hz = float(policy_spec.get("physics_hz", 60.0))
+            physics_hz = float(policy_spec.get("physics_hz", self.config.get("physics_hz", 60.0)))
             if not math.isfinite(physics_hz) or physics_hz <= 0.0:
                 physics_hz = 60.0
             SimulationManager.setup_simulation(dt=1.0 / physics_hz, device="cpu")
@@ -521,7 +524,19 @@ class JointPositionAdapter(RobotAdapter):
             prim = stage.GetPrimAtPath(prim_path)
             if not prim or not prim.IsValid():
                 return
-            UsdGeom.XformCommonAPI(prim).SetTranslate(Gf.Vec3d(*[float(v) for v in spawn]))
+            xform = UsdGeom.Xformable(prim)
+            position = Gf.Vec3d(*[float(v) for v in spawn])
+            # SO-101 has quaternion orient ops, unsupported by XformCommonAPI.
+            # Preserve rotation/scale and move before authoring the world anchor.
+            translate = next((op for op in xform.GetOrderedXformOps()
+                              if op.GetOpType() == UsdGeom.XformOp.TypeTranslate
+                              and not op.IsInverseOp()), None)
+            if translate is not None:
+                translate.Set(position)
+            else:
+                matrix = xform.GetLocalTransformation()
+                matrix.SetTranslateOnly(position)
+                xform.MakeMatrixXform().Set(matrix)
             print(f"[stage2] placed {prim_path} at "
                   f"({float(spawn[0]):.3f}, {float(spawn[1]):.3f}, {float(spawn[2]):.3f})", flush=True)
         except Exception as exc:

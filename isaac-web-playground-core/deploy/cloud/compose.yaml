@@ -1,0 +1,93 @@
+name: hetao-isaac
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-web: &web
+  image: hetao-isaac-web:${RELEASE_TAG:-cloud-local}
+  build:
+    context: ../..
+    dockerfile: deploy/cloud/Dockerfile.web
+  network_mode: host
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 30s
+  logging: *logging
+  volumes:
+    - ${DEPLOY_DIR:?Run manage.py init}/platform.json:/config/platform.json:ro
+    - ${DEPLOY_DIR}/worker-key:/run/secrets/worker-key:ro
+services:
+  gateway:
+    <<: *web
+    volumes:
+      - ${DEPLOY_DIR}/platform.json:/config/platform.json:ro
+      - ${DEPLOY_DIR}/worker-key:/run/secrets/worker-key:ro
+      - ${DEPLOY_DIR}/state/platform:/data/platform
+    environment:
+      ISAAC_PLATFORM_MODE: external
+      ISAAC_PLATFORM_CONFIG: /config/platform.json
+      ISAAC_PLATFORM_DATA_DIR: /data/platform
+      ISAAC_WORKER_KEY_FILE: /run/secrets/worker-key
+    healthcheck:
+      test: ["CMD", "node", "deploy/cloud/health.mjs", "gateway"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+  worker:
+    <<: *web
+    volumes:
+      - ${DEPLOY_DIR}/platform.json:/config/platform.json:ro
+      - ${DEPLOY_DIR}/worker-key:/run/secrets/worker-key:ro
+      - ${DEPLOY_DIR}/state/stations:/data/stations
+    command: ["node", "server/station-main.js"]
+    environment:
+      ISAAC_PLATFORM_CONFIG: /config/platform.json
+      ISAAC_PLATFORM_DATA_DIR: /data/stations
+      ISAAC_STATION_ID: cloud-1
+      ISAAC_WORKER_KEY_FILE: /run/secrets/worker-key
+    healthcheck:
+      test: ["CMD", "node", "deploy/cloud/health.mjs", "worker"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
+  sim:
+    image: hetao-isaac-sim:${RELEASE_TAG:-cloud-local}
+    build:
+      context: ../..
+      dockerfile: deploy/cloud/Dockerfile.sim
+      args:
+        ISAAC_SIM_IMAGE: ${ISAAC_SIM_IMAGE:-nvcr.io/nvidia/isaac-sim:6.0.1}
+    network_mode: host
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 60s
+    shm_size: 2gb
+    logging: *logging
+    depends_on:
+      worker:
+        condition: service_healthy
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA:?Set ACCEPT_EULA=Y after reviewing the NVIDIA terms}
+      PRIVACY_CONSENT: N
+      NVIDIA_DRIVER_CAPABILITIES: graphics,video,compute,utility,display
+      ISAAC_PLATFORM_CONFIG: /config/platform.json
+      ISAAC_PLATFORM_DATA_DIR: /data/stations
+      ISAAC_STATION_ID: cloud-1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEVICE:-0}"]
+              capabilities: [gpu]
+    volumes:
+      - ${DEPLOY_DIR}/platform.json:/config/platform.json:ro
+      - ${DEPLOY_DIR}/state/stations:/data/stations
+      - ${DEPLOY_DIR}/cache/main:/isaac-sim/.cache
+      - ${DEPLOY_DIR}/cache/compute:/isaac-sim/.nv/ComputeCache
+      - ${DEPLOY_DIR}/kit-config:/isaac-sim/.nvidia-omniverse/config
+      - ${DEPLOY_DIR}/kit-data:/isaac-sim/.local/share/ov/data
+      - ${DEPLOY_DIR}/kit-pkg:/isaac-sim/.local/share/ov/pkg
+      - ${DEPLOY_DIR}/logs:/isaac-sim/.nvidia-omniverse/logs

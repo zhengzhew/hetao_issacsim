@@ -1,0 +1,14 @@
+ARG ISAAC_SIM_IMAGE=nvcr.io/nvidia/isaac-sim:6.0.1
+FROM ${ISAAC_SIM_IMAGE}
+USER root
+WORKDIR /app
+COPY bridge ./bridge
+COPY third_party ./third_party
+COPY configs/scenes.json configs/robots.json configs/challenges.json ./configs/
+COPY deploy/cloud/sim_entry.py ./deploy/cloud/sim_entry.py
+RUN /isaac-sim/python.sh -m pip install --no-deps --target /app/run/python-deps onnxruntime==1.22.1
+RUN /isaac-sim/python.sh -c "import site; site.addsitedir('/app/run/python-deps'); import onnxruntime; print(onnxruntime.__version__)"
+ENV ISAAC_DIR=/isaac-sim PYTHONDONTWRITEBYTECODE=1
+USER 1234:1234
+WORKDIR /isaac-sim
+ENTRYPOINT ["/isaac-sim/python.sh", "/app/deploy/cloud/sim_entry.py"]

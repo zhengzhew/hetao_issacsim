@@ -1,0 +1,32 @@
+# Allowlist: personal configuration, auth files, logs and local uploads must
+# never enter a Docker build context, even if they are not tracked by Git.
+**
+!package.json
+!package-lock.json
+!server/
+!server/**
+!web/
+!web/**
+web/downloads/**
+web/native-sdk.js*
+!src/
+!src/**
+!bridge/
+!bridge/**
+!third_party/
+!third_party/**
+!configs/
+!configs/scenes.json
+!configs/robots.json
+!configs/challenges.json
+!configs/challenge-assets.lock.json
+!scripts/
+!scripts/build_native.mjs
+!scripts/fetch_challenge_assets.py
+!deploy/
+!deploy/cloud/
+!deploy/cloud/Dockerfile.web
+!deploy/cloud/Dockerfile.sim
+!deploy/cloud/sim_entry.py
+!deploy/cloud/health.mjs
+**/__pycache__/**

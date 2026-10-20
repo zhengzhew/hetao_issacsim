@@ -4,6 +4,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Agent } from './agent.js'
+import { BridgeChannel } from './bridge-channel.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, '..')
@@ -48,6 +49,7 @@ const config = {
   port: requestedPort,
   renderer,
   streamHost: process.env.ISAAC_STREAM_HOST || '127.0.0.1',
+  signalHost: process.env.ISAAC_SIGNAL_HOST || process.env.ISAAC_STREAM_HOST || '127.0.0.1',
   signalPort: Number(process.env.ISAAC_SIGNAL_PORT || 49100),
   mediaPort: Number(process.env.ISAAC_MEDIA_PORT || 47998),
   signalPath: process.env.ISAAC_SIGNAL_PATH || '',
@@ -129,6 +131,7 @@ function withDeadline(promise, ms, message) {
 }
 
 function bridgeRequest(op, args = {}, timeoutMs = 1200) {
+  const expiresAt = Date.now() + timeoutMs
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ host: config.bridgeHost, port: config.bridgePort })
     let buffer = ''
@@ -142,7 +145,7 @@ function bridgeRequest(op, args = {}, timeoutMs = 1200) {
     }
     socket.setEncoding('utf8')
     socket.setTimeout(timeoutMs)
-    socket.on('connect', () => socket.write(JSON.stringify({ id: `${Date.now()}-${Math.random()}`, op, args }) + '\n'))
+    socket.on('connect', () => socket.write(JSON.stringify({ id: `${Date.now()}-${Math.random()}`, op, args, expiresAt }) + '\n'))
     socket.on('data', (chunk) => {
       buffer += chunk
       const nl = buffer.indexOf('\n')
@@ -191,7 +194,7 @@ function tcpProbe(host, port, timeoutMs = 700) {
 
 async function streamStatus() {
   const [signaling, bridge] = await Promise.all([
-    tcpProbe(config.streamHost, config.signalPort),
+    tcpProbe(config.signalHost, config.signalPort),
     bridgeStatus(),
   ])
   return {
@@ -551,123 +554,6 @@ function validateRobotEntry(body) {
 // samples a second and the connection setup alone would dominate the latency.
 // This keeps one socket open and matches replies to requests by id.
 
-class BridgeChannel {
-  constructor(host, port) {
-    this.host = host
-    this.port = port
-    this.socket = null
-    this.connecting = null
-    this.pending = new Map()
-    this.nextId = 1
-    this.buffer = ''
-    this.connectedAt = null
-    this.failures = 0
-    this.retryAfter = 0
-    this.connectTimeoutMs = Number(process.env.ISAAC_BRIDGE_CONNECT_TIMEOUT || 1500)
-  }
-
-  connect() {
-    if (this.socket && !this.socket.destroyed) return Promise.resolve(this.socket)
-    if (this.connecting) return this.connecting
-    if (Date.now() < this.retryAfter) {
-      return Promise.reject(new Error('bridge is unreachable; backing off'))
-    }
-    this.connecting = new Promise((resolve, reject) => {
-      const socket = net.createConnection({ host: this.host, port: this.port })
-      // Without this the OS connect timeout (minutes) applies, and send()
-      // awaits connect() before arming its own timer.
-      socket.setTimeout(this.connectTimeoutMs, () => socket.destroy(new Error('bridge connect timed out')))
-      socket.setEncoding('utf8')
-      socket.setNoDelay(true)
-      const fail = (err) => {
-        this.connecting = null
-        // Exponential-ish backoff, capped, so a dead bridge is not hammered.
-        this.failures = Math.min(this.failures + 1, 6)
-        this.retryAfter = Date.now() + Math.min(2000, 50 * 2 ** this.failures)
-        this.teardown(err)
-        reject(err)
-      }
-      socket.once('error', fail)
-      socket.once('connect', () => {
-        socket.off('error', fail)
-        this.socket = socket
-        this.connecting = null
-        this.connectedAt = Date.now()
-        this.failures = 0
-        this.retryAfter = 0
-        socket.setTimeout(0)
-        socket.on('data', (chunk) => this.onData(chunk))
-        socket.on('error', (err) => this.teardown(err))
-        socket.on('close', () => this.teardown(new Error('bridge channel closed')))
-        resolve(socket)
-      })
-    })
-    return this.connecting
-  }
-
-  onData(chunk) {
-    this.buffer += chunk
-    let nl
-    while ((nl = this.buffer.indexOf('\n')) >= 0) {
-      const line = this.buffer.slice(0, nl)
-      this.buffer = this.buffer.slice(nl + 1)
-      if (!line.trim()) continue
-      let msg
-      try { msg = JSON.parse(line) } catch { continue }
-      const waiter = this.pending.get(msg.id)
-      if (!waiter) continue
-      this.pending.delete(msg.id)
-      clearTimeout(waiter.timer)
-      if (msg.ok) waiter.resolve(msg.result ?? null)
-      else waiter.reject(new Error(msg.error || 'bridge request failed'))
-    }
-    // A wedged bridge must not grow this without bound.
-    if (this.buffer.length > 16 * 1024 * 1024) this.teardown(new Error('bridge reply too large'))
-  }
-
-  teardown(err) {
-    const socket = this.socket
-    this.socket = null
-    this.buffer = ''
-    this.connectedAt = null
-    if (socket) socket.destroy()
-    for (const [, waiter] of this.pending) {
-      clearTimeout(waiter.timer)
-      waiter.reject(err)
-    }
-    this.pending.clear()
-  }
-
-  async send(op, args = {}, timeoutMs = 2000) {
-    await this.connect()
-    const id = `c${this.nextId++}`
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(new Error(`bridge did not answer ${op} in ${timeoutMs}ms`))
-      }, timeoutMs)
-      this.pending.set(id, { resolve, reject, timer })
-      try {
-        this.socket.write(JSON.stringify({ id, op, args }) + '\n')
-      } catch (err) {
-        this.pending.delete(id)
-        clearTimeout(timer)
-        reject(err)
-      }
-    })
-  }
-
-  get status() {
-    return {
-      connected: Boolean(this.socket),
-      since: this.connectedAt,
-      inFlight: this.pending.size,
-      failures: this.failures,
-      backingOffFor: Math.max(0, this.retryAfter - Date.now()),
-    }
-  }
-}
-
 const teleopChannel = new BridgeChannel(config.bridgeHost, config.bridgePort)
 const captureChannel = new BridgeChannel(config.bridgeHost, config.bridgePort)
 
@@ -815,6 +701,8 @@ function serveStatic(pathname, res) {
 
 let nativeClientReport = null
 async function handle(req, res, url) {
+  const workerKey = process.env.ISAAC_WORKER_KEY
+  if (workerKey && req.headers['x-isaac-worker-key'] !== workerKey) return json(res, 401, {ok:false,error:'worker authentication required'})
   if (url.pathname === '/api/stream/client-report' && req.method === 'GET') {
     return json(res, 200, { report: nativeClientReport })
   }
@@ -862,7 +750,7 @@ async function handle(req, res, url) {
   }
 
   if (url.pathname === '/api/catalog' && req.method === 'GET') {
-    return json(res, 200, { ok: true, ...mergedCatalog() })
+    return json(res, 200, { ok: true, ...mergedCatalog(), challenges: readCatalog('challenges.json', 'levels') })
   }
 
   if (url.pathname === '/api/status' && req.method === 'GET') {
@@ -870,6 +758,28 @@ async function handle(req, res, url) {
     return json(res, 200, { web: true, ...status })
   }
 
+  if (url.pathname === '/api/challenges' && req.method === 'GET') {
+    try { return json(res, 200, { ok: true, challenge: await bridgeRequest('challenge_status', {}, 4000) }) }
+    catch (err) { return json(res, 503, { ok: false, error: err.message }) }
+  }
+  if (url.pathname === '/api/challenges/start' && req.method === 'POST') {
+    if (launchInFlight) return json(res,409,{ok:false,error:'正在准备关卡，请稍等'})
+    launchInFlight=true
+    try {
+      const body=await readJsonBody(req)
+      if (!readCatalog('challenges.json','levels').some(x=>x.id===body.id)) throw new Error('未知关卡')
+      return json(res,200,{ok:true,...await bridgeRequest('challenge_start',{id:body.id},240000)})
+    } catch(err) {return json(res,400,{ok:false,error:err.message})}
+    finally {launchInFlight=false}
+  }
+  if (url.pathname === '/api/challenges/action' && req.method === 'POST') {
+    if (launchInFlight) return json(res,409,{ok:false,error:'关卡正在加载'})
+    try {
+      const body=await readJsonBody(req)
+      if (!['sit','stand','roll','kick'].includes(body.action)) throw new Error('未知动作')
+      return json(res,200,{ok:true,...await bridgeRequest('challenge_action',{action:body.action},5000)})
+    } catch(err) {return json(res,400,{ok:false,error:err.message})}
+  }
   if (url.pathname === '/api/session' && req.method === 'GET') {
     try { return json(res, 200, { ok: true, session: await bridgeRequest('get_session', {}, 2000) }) }
     catch (err) { return json(res, 503, { ok: false, error: err.message }) }
@@ -1188,7 +1098,7 @@ async function handle(req, res, url) {
   if (url.pathname === '/api/teleop/engage' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req)
-      const args = { source: String(body?.source || 'leader').slice(0, 120).replace(/[^\x20-\x7e]/g, '') }
+      const args = { source: String(body?.source || 'leader').slice(0, 120).replace(/[^\x20-\x7e]/g, ''), requestId: String(body?.requestId || '').slice(0, 64) }
       const calibration = normalizeCalibration(body?.calibration)
       if (calibration) args.calibration = calibration
       return json(res, 200, { ok: true, teleop: await teleopChannel.send('teleop_engage', args, 5000) })
@@ -1218,7 +1128,7 @@ async function handle(req, res, url) {
   }
 
   if (url.pathname === '/api/teleop/status' && req.method === 'GET') {
-    try { return json(res, 200, { ok: true, channel: teleopChannel.status, teleop: await teleopChannel.send('teleop_status', {}, 3000) }) }
+    try { return json(res, 200, { ok: true, channel: teleopChannel.status, teleop: await bridgeRequest('teleop_status', {}, 1000) }) }
     catch (err) { return json(res, 503, { ok: false, channel: teleopChannel.status, error: err.message }) }
   }
 
@@ -1233,7 +1143,9 @@ async function handle(req, res, url) {
       }
       const positions = normalizeJointMap(body?.positions || body?.joints)
       const seq = Math.max(0, Math.min(2 ** 31, Number(body?.seq) || 0))
-      const result = await teleopChannel.send('teleop_sample', { positions, seq, token }, 1500)
+      const remaining = body.expiresAt == null ? 250 : Math.min(250, Number(body.expiresAt) - Date.now())
+      if (!Number.isFinite(remaining) || remaining <= 0) return json(res, 408, {ok:false,error:'sample expired'})
+      const result = await teleopChannel.send('teleop_sample', { positions, seq, token }, remaining)
       return json(res, 200, { ok: true, ...result })
     } catch (err) {
       const clientFault = /must be|bad joint|is empty|too many/i.test(err.message)
@@ -1453,7 +1365,7 @@ function listen(port, attemptsLeft = 20) {
   }
   server.once('error', onError)
   server.once('listening', onListening)
-  server.listen(port, '0.0.0.0')
+  server.listen(port, process.env.ISAAC_WEB_HOST || '127.0.0.1')
 }
 
 listen(config.port)

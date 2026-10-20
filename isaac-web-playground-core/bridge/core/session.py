@@ -1,5 +1,7 @@
 """Current session state: which scene + robot is loaded, and how it got there."""
 from __future__ import annotations
+import uuid
+SERVER_ID = uuid.uuid4().hex
 
 from .app_context import time, traceback
 from . import catalog
@@ -8,7 +10,10 @@ from .scene import load_scene, set_camera
 from .streaming import camera_defaults, frame_robot
 from .teleop import TELEOP, set_teleop_calibration
 
+from .duck_runtime import MicroDuckAdapter
+
 ADAPTERS = {
+    "microduck-policy": MicroDuckAdapter,
     "differential-drive": DifferentialDriveAdapter,
     "holonomic-drive": HolonomicDriveAdapter,
     "joint-position": JointPositionAdapter,
@@ -42,6 +47,7 @@ def robot_info() -> dict:
 def session_info() -> dict:
     return {
         **SESSION,
+        "serverId": SERVER_ID,
         "scene": CURRENT_SCENE,
         "robot": robot_info(),
         "sceneUrl": CURRENT_SCENE_URL,
@@ -56,6 +62,10 @@ def launch_session(scene_id: str, robot_id: str) -> dict:
         raise ValueError(f"unknown scene id: {scene_id}")
     if robot_id not in catalog.ROBOT_BY_ID:
         raise ValueError(f"unknown robot id: {robot_id}")
+    from .challenges import clear
+    clear()
+    if hasattr(ROBOT, "close"):
+        ROBOT.close()
     scene = catalog.SCENE_BY_ID[scene_id]
     robot_cfg = catalog.ROBOT_BY_ID[robot_id]
     adapter_cls = ADAPTERS.get(robot_cfg.get("adapter"))

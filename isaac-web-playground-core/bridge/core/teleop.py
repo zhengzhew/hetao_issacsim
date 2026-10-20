@@ -88,6 +88,10 @@ def teleop_engage(args: dict) -> dict:
         raise ValueError(
             "joint limits could not be read for this robot, so a leader could drive it "
             "into its hard stops; pass allow_unlimited to override")
+    if TELEOP["engaged"]:
+        if args.get("requestId") and args["requestId"] == TELEOP.get("request_id") and args.get("source") == TELEOP["source"]:
+            return {**teleop_status(), "token": TELEOP["token"]}
+        raise ValueError("another leader is engaged; release control before connecting")
     # A calibration belongs to the session that supplied it. Carrying one over
     # would silently apply another operator's offsets and inversions -- and
     # would survive a robot swap it no longer describes.
@@ -100,6 +104,7 @@ def teleop_engage(args: dict) -> dict:
         # samples from driving the arm, or wedging the next leader's sequence.
         "token": uuid.uuid4().hex[:16],
         "source": str(args.get("source") or "unknown"),
+        "request_id": args.get("requestId"),
         "seq": 0,
         "dropped": 0,
         "applied": 0,
@@ -170,13 +175,15 @@ def teleop_sample(args: dict) -> dict:
 
     # Slew limit. Without it the very first sample is an unbounded step from
     # wherever the follower is to wherever the leader happens to be.
-    step = float(ARGS.teleop_max_step)
+    # Preserve the old 20 Hz nominal speed, independent of actual packet rate.
+    elapsed = max(0., min(time.monotonic() - TELEOP["last_sample_at"], .1))
+    step = float(ARGS.teleop_max_step) * 20.0 * elapsed
     previous = TELEOP["last_positions"] or {}
     limited = {}
     clamped_any = False
     for name, wanted in targets.items():
         current = previous.get(name)
-        if current is None or step <= 0:
+        if current is None or float(ARGS.teleop_max_step) <= 0:
             limited[name] = wanted
             continue
         delta = wanted - current
@@ -237,6 +244,9 @@ def teleop_status() -> dict:
 
 def enforce_teleop_watchdog() -> None:
     """If the leader stops sending, hold the last pose. Never drop the arm."""
+    if TELEOP["engaged"] and TELEOP["last_sample_at"] and time.monotonic() - TELEOP["last_sample_at"] > 5.0:
+        teleop_disengage({"token": TELEOP["token"]})
+        return
     if not TELEOP["engaged"] or TELEOP["holding"] or not TELEOP["last_sample_at"]:
         return
     if time.monotonic() - TELEOP["last_sample_at"] <= ARGS.teleop_watchdog:

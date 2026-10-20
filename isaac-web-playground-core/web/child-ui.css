@@ -15,3 +15,92 @@ body.launcher-open .workspace{display:none}
 @media(min-width:761px) and (max-height:850px){.workspace{padding:20px 4vw;gap:20px}.control-panel{gap:12px}.control-panel>section{padding:12px 16px;border-radius:22px}.control-panel .buddy-banner{padding:8px 12px}.control-panel .buddy{width:62px;min-width:62px}.control-panel .buddy-message{font-size:13px;line-height:1.5}.control-panel .buddy-name{font-size:10px}.control-hero .section-heading{display:none}.mode-help{font-size:13px;min-height:0;margin:8px 0 0}.segmented button{padding:8px;font-size:15px}.key-grid.six{gap:10px;margin:10px 0 6px}.key{height:62px}.lateral-hint{margin-top:8px;font-size:11px}.action-row{margin-top:8px}.action-row button{min-height:56px;padding:10px}.viewer-shell{height:calc(100vh - 120px);min-height:500px}.control-row-title{font-size:11px}}
 @media(max-width:760px){body:not(.launcher-open) .workspace{padding-bottom:112px}#robotControls .action-row{position:fixed;bottom:12px;left:16px;right:16px;z-index:80;background:#fff;padding:10px;border-radius:22px;box-shadow:0 5px 30px #25483425}.viewer-shell{height:320px;min-height:320px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Challenge mode preserves the mint/white, large-target child interface. */
+.challenge-track .challenge-illustration{height:140px;display:grid;place-items:center;font-size:74px;border-radius:22px;background:#fff3ce;margin-bottom:14px}.challenge-track.duck .challenge-illustration{background:#dfefdc}.challenge-track strong{font-size:23px}.challenge-level{min-height:205px}.level-number{display:grid;place-items:center;width:52px;height:52px;border-radius:17px;background:#fbe995;color:#775e27;font-size:26px;margin-bottom:12px}.challenge-level strong{font-size:21px}.challenge-card{order:-1!important}.challenge-card h2{font-size:23px;margin:10px 0}.challenge-card p{line-height:1.75;color:#4c6e59}.challenge-goal{padding:13px;background:#fff5d6;border-radius:14px;color:#6b572c;font-weight:bold}.challenge-actions{display:flex;flex-wrap:wrap;gap:16px;margin-top:16px}.challenge-actions button{flex:1;min-height:62px;min-width:112px}.challenge-card.completed{outline:3px solid #70b989;background:#effbef!important}.challenge-card.completed #challengeProgress{font-size:20px;color:#278248;font-weight:bold}.joint-slider input{height:48px!important}.control-panel:has(.challenge-card:not([hidden])) .buddy-banner{order:-2}.adult-connection #connectionExplanation{width:100%;line-height:1.7}
+
+.launch-error{padding:16px 20px;margin:20px 0 0;border-radius:18px;background:#fff1d9;color:#845b22;font-size:16px;line-height:1.7}
+
+/* Keep live controls beside the viewport; task and exploration guidance below. */
+.workspace {
+  --stage-height: clamp(512px, calc(100dvh - 420px), 820px);
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 29vw, 440px);
+  grid-template-rows: var(--stage-height) auto;
+  gap: 20px;
+  padding: 24px clamp(20px, 2.4vw, 48px) 28px;
+  min-height: 0;
+  align-items: start;
+}
+.workspace > .viewer-shell {
+  height: 100%; min-height: 0; max-height: none; width: 100%;
+}
+.workspace > .control-panel {
+  height: 100%; min-width: 0; gap: 16px;
+  overflow-y: auto; padding: 0 4px 0 0;
+}
+.control-panel > section { padding: 16px; flex-shrink: 0; }
+#jointControls { order: 0; }
+#robotControls { order: 1; }
+.control-panel .keyboard-section { order: 0; }
+#cameraControls, #policyControls { order: 2; }
+.control-panel .joint-sliders {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px; max-height: none; overflow: visible; margin-top: 12px;
+}
+.control-panel .joint-slider { min-width: 0; min-height: 66px; }
+.control-panel .joint-slider .row { gap: 6px; align-items: center; font-size: 14px; }
+.control-panel .joint-slider strong { color: #3b7053; font-size: 12px; }
+.control-panel .joint-slider input { width: 100%; min-width: 0; margin: 0; }
+.control-panel .action-row { margin-top: 12px; }
+.control-panel .action-row button { min-height: 56px; }
+.workspace-footer {
+  grid-column: 1 / -1; display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 29vw, 440px);
+  gap: 20px; min-width: 0; align-items: stretch;
+}
+.workspace-footer > section {
+  min-width: 0; margin: 0; padding: 20px;
+  border-radius: 26px; background: white;
+  box-shadow: 0 8px 25px #36594408;
+}
+.workspace-footer .challenge-card {
+  display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 12px 24px; align-content: start;
+}
+.challenge-copy h2 { margin: 5px 0 8px; }
+.challenge-copy p { margin: 0; font-size: 14px; }
+.challenge-status p { margin: 10px 0 0; font-size: 14px; }
+.challenge-buttons { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 14px; }
+.challenge-buttons .challenge-actions { display: contents; }
+.challenge-buttons button { flex: 1; min-width: 120px; min-height: 56px; padding: 12px 16px; }
+.workspace-footer .control-hero { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.workspace-footer .control-hero .section-heading { display: flex; margin: 0; }
+.workspace-footer .control-hero h2 { margin: 0; font-size: 18px; }
+.workspace-footer .control-hero .section-heading .eyebrow { display: none; }
+.workspace-footer .segmented { gap: 10px; }
+.workspace-footer .segmented button { min-height: 56px; padding: 8px; font-size: 16px; }
+.workspace-footer .mode-help { min-height: 0; margin: 0; font-size: 13px; }
+.workspace-footer .buddy-banner { gap: 10px; padding-top: 8px; border-top: 1px solid #e4eee6; }
+.workspace-footer .buddy { width: 52px; min-width: 52px; }
+.workspace-footer .buddy-name { font-size: 10px; }
+.workspace-footer .buddy-message { font-size: 12px; line-height: 1.5; margin: 3px 0 0; }
+.workspace-footer .speak-guide { min-width: 48px; min-height: 48px; margin-left: auto; font-size: 18px; line-height: 1; padding: 6px; }
+.workspace-footer .speak-guide span { font-size: 10px; line-height: 1.2; }
+@media (min-width:761px) and (max-width:1100px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 350px; padding: 20px; }
+  .workspace-footer { grid-template-columns: minmax(0, 1fr) 350px; }
+  .workspace-footer .challenge-card { grid-template-columns: 1fr; }
+  .workspace .viewer-topline { padding: 10px; flex-wrap: wrap; }
+  .workspace .viewer-actions { margin-left: auto; }
+}
+@media (max-width:760px) {
+  .workspace { display: flex; flex-direction: column; padding: 16px; gap: 16px; }
+  .workspace > .viewer-shell { height: 300px; min-height: 300px; }
+  .workspace > .control-panel { height: auto; padding: 0; overflow: visible; width: 100%; }
+  .workspace-footer { display: flex; flex-direction: column; gap: 16px; width: 100%; }
+  .workspace-footer .challenge-card { display: grid; grid-template-columns: 1fr; }
+  .workspace-footer > section { padding: 18px; }
+  .control-panel .joint-sliders { gap: 16px; }
+  #robotControls .action-row { position: static; padding: 0; box-shadow: none; }
+  body:not(.launcher-open) .workspace { padding-bottom: 24px; }
+}

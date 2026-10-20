@@ -1,5 +1,12 @@
-import { initChildUI, sceneLabel, sceneNotes, picture } from './child-ui.js?v=20260916.3'
+import { initAccessClient } from './access-client.js'
+import { initChallengesUI } from './challenges-ui.js?v=20261010-manual-dice-1'
+import { initChildUI, sceneLabel, sceneNotes, picture } from './child-ui.js?v=20260930-football-1'
 const $ = (id) => document.getElementById(id)
+
+function escapeHtml(value) {
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  return String(value ?? '').replace(/[&<>"']/g, (character) => entities[character])
+}
 
 const viewerShell = $('viewerShell')
 const video = $('remote-video')
@@ -75,6 +82,7 @@ const robotLibrary = $('robotLibrary')
 const sceneCount = $('sceneCount')
 const robotCount = $('robotCount')
 const launchSummary = $('launchSummary')
+const launchError = $('launchError')
 const launchSessionButton = $('launchSession')
 const closeLauncher = $('closeLauncher')
 const changeSetup = $('changeSetup')
@@ -343,44 +351,37 @@ function syncSpeedRanges(robot) {
 }
 
 function renderLibrary() {
-  sceneCount.textContent = `${state.catalog.scenes.length} 个世界`
-  robotCount.textContent = `${state.catalog.robots.length} 位伙伴`
-  sceneLibrary.innerHTML = ''
-  robotLibrary.innerHTML = ''
-  for (const scene of state.catalog.scenes) {
-    const card = document.createElement('button')
-    card.type = 'button'
-    card.className = 'library-card'
-    card.dataset.sceneId = scene.id
-    card.innerHTML = `${picture('scene', scene.id)}<div class="card-top"><strong>${escapeHtml(sceneLabel(scene))}</strong></div><p>${escapeHtml(sceneNotes[scene.id] || '老师准备的新世界，一起探索吧。')}</p>`
-    card.addEventListener('click', () => { state.selectedSceneId = scene.id; renderLibrarySelection() })
+  const levels=state.catalog.challenges||[]
+  if (!levels.some(l=>l.id===state.selectedChallengeId)) state.selectedChallengeId=levels[0]?.id
+  const selected=levels.find(l=>l.id===state.selectedChallengeId)
+  if(selected){state.selectedSceneId=selected.sceneId;state.selectedRobotId=selected.robotId}
+  sceneCount.textContent='2 位伙伴';robotCount.textContent=levels.filter(l=>l.track===selected?.track).length+' 个挑战'
+  sceneLibrary.innerHTML='';robotLibrary.innerHTML=''
+  for(const track of [{id:'so101',name:'SO-101 机械臂',icon:'🦾',note:'搬方块 · 扔骰子 · 分水果',color:'arm'},{id:'microduck',name:'MicroDuck 小鸭子',icon:'🐥',note:'走一走 · 坐下站起 · 前滚翻 · 踢足球',color:'duck'}]){
+    const card=document.createElement('button');card.type='button';card.className='library-card challenge-track '+track.color
+    card.dataset.sceneId=track.id==='so101'?'challenge-arm':'challenge-duck'
+    card.innerHTML=`<div class="challenge-illustration" aria-hidden="true">${track.icon}</div><strong>${track.name}</strong><p>${track.note}</p>`
+    card.onclick=()=>{state.selectedChallengeId=levels.find(l=>l.track===track.id)?.id;renderLibrary()}
     sceneLibrary.append(card)
   }
-  for (const robot of state.catalog.robots) {
-    const card = document.createElement('button')
-    card.type = 'button'
-    card.className = 'library-card'
-    card.dataset.robotId = robot.id
-    const kind = { 'holonomic-drive': 'holonomic', 'joint-position': 'arm' }[robot.adapter] || 'differential'
-    const tag = robot.source === 'uploaded' ? `${kind} · yours` : kind
-    const robotNotes = {jetbot:'小巧灵活，陪你练习前进和转弯。','carter-v1':'稳稳的大伙伴，带你逛逛仓库。','nova-carter':'探索好帮手，准备好出发了吗？',kaya:'我还会横着走！试试左右平移。'}
-    card.innerHTML = `${picture('robot', robot.id)}<div class="card-top"><strong>${escapeHtml(robot.name)}</strong></div><p>${escapeHtml(robotNotes[robot.id] || '老师准备的新伙伴。')}</p>`
-    card.addEventListener('click', () => { state.selectedRobotId = robot.id; renderLibrarySelection() })
+  levels.filter(l=>l.track===selected?.track).forEach((level,index)=>{
+    const card=document.createElement('button');card.type='button';card.className='library-card challenge-level';card.dataset.levelId=level.id
+    card.innerHTML=`<span class="level-number">${index+1}</span><strong>${escapeHtml(level.name)}</strong><p>${escapeHtml(level.instruction)}</p>`
+    card.onclick=()=>{state.selectedChallengeId=level.id;renderLibrarySelection()}
     robotLibrary.append(card)
-  }
+  })
   renderLibrarySelection()
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, (ch) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]))
-}
-
 function renderLibrarySelection() {
+  const level=state.catalog.challenges?.find(l=>l.id===state.selectedChallengeId)
+  if(level){state.selectedSceneId=level.sceneId;state.selectedRobotId=level.robotId}
+  document.querySelectorAll('[data-level-id]').forEach(el=>{el.classList.toggle('selected',el.dataset.levelId===state.selectedChallengeId);el.setAttribute('aria-pressed',String(el.dataset.levelId===state.selectedChallengeId))})
   document.querySelectorAll('[data-scene-id]').forEach((el) => {const selected=el.dataset.sceneId===state.selectedSceneId;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected))})
   document.querySelectorAll('[data-robot-id]').forEach((el) => {const selected=el.dataset.robotId===state.selectedRobotId;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected))})
   const scene = sceneById(state.selectedSceneId)
   const robot = robotById(state.selectedRobotId)
-  launchSummary.innerHTML = scene && robot ? `<strong>${escapeHtml(sceneLabel(scene))}</strong> · <strong>${escapeHtml(robot.name)}</strong>` : '先选世界，再选一位机器人伙伴。'
+  launchSummary.innerHTML = scene && robot ? `<strong>${escapeHtml(robot.name)}</strong> · <strong>${escapeHtml(level?.name || sceneLabel(scene))}</strong>` : '先选伙伴，再选一个挑战。'
   launchSessionButton.disabled = state.launching || !state.bridgeConnected || !scene || !robot
 }
 
@@ -404,21 +405,27 @@ function closeLauncherPanel() {
 async function launchSelectedSession() {
   if (state.launching || !state.selectedSceneId || !state.selectedRobotId) return
   clearKeys(true)
+  launchError.hidden = true
+  launchError.textContent = ''
   state.launching = true
+  jointQueue.pending={}
+  document.querySelector('.workspace').inert=true
+  document.querySelectorAll('.library-card').forEach(el=>el.disabled=true)
   launchSessionButton.disabled = true
   launchSessionButton.textContent = '◷ 正在准备…'
   sessionStatus.textContent = 'launching'
-  launchSummary.textContent = '正在准备世界和机器人，请稍等…'
+  launchSummary.textContent = '正在准备伙伴和关卡，请稍等…'
   childUI.guide('小芽正在准备实验室。等一等，马上就好。','calm')
   logEvent('launch', `${state.selectedSceneId} + ${state.selectedRobotId}`)
   try {
-    const response = await fetch('/api/session/launch', {
+    const response = await fetch(state.selectedChallengeId ? '/api/challenges/start' : '/api/session/launch', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sceneId: state.selectedSceneId, robotId: state.selectedRobotId }),
+      body: JSON.stringify(state.selectedChallengeId ? {id:state.selectedChallengeId} : { sceneId: state.selectedSceneId, robotId: state.selectedRobotId }),
     })
     const payload = await response.json()
     if (!payload.ok) throw new Error(payload.error || 'session launch failed')
     applySession(payload.session)
+    state.challenge=payload.challenge||null
     if (payload.session.status !== 'ready') throw new Error(payload.session.error || 'robot adapter did not become ready')
     launcher.hidden = true
     document.body.classList.remove('launcher-open')
@@ -427,9 +434,13 @@ async function launchSelectedSession() {
   } catch (err) {
     launchSummary.textContent = '实验室还没准备好，请让老师帮忙看看。'
     childUI.guide('没关系，实验室需要一点帮助。请叫老师来看看吧。','calm')
+    launchError.hidden = false
+    launchError.textContent = '这次没能加载关卡。请再点「一起出发」，或请老师帮忙。'
     logEvent('launch-error', err.message)
   } finally {
     state.launching = false
+    document.querySelector('.workspace').inert=!launcher.hidden
+    document.querySelectorAll('.library-card').forEach(el=>el.disabled=false)
     launchSessionButton.textContent = '▶ 一起出发'
     renderLibrarySelection()
   }
@@ -499,8 +510,8 @@ function setMode(mode) {
   state.lastCommandKey = ''
   document.querySelectorAll('.mode').forEach((button) => button.classList.toggle('active', button.dataset.mode === mode))
   robotInputShield.hidden = mode !== 'robot'
-  modeChip.textContent = mode === 'camera' ? '看看世界' : '开机器人'
-  keyboardMeaning.textContent = mode === 'camera' ? '观察世界' : '驾驶伙伴'
+  modeChip.textContent = mode === 'camera' ? '看看世界' : '操控伙伴'
+  keyboardMeaning.textContent = mode === 'camera' ? '观察世界' : '操控伙伴'
   cameraControls.hidden = mode !== 'camera'
   robotControls.hidden = mode !== 'robot'
   renderCapabilities()
@@ -529,8 +540,8 @@ function refreshModeText() {
   document.querySelector('[data-key="s"] small').textContent = cameraMode ? '退远一点' : '向后'
   if (state.mode === 'robot') {
     const lateral = state.capabilities?.lateral ? ' · Q/E strafe' : ''
-    modeHelp.textContent = '按住箭头开动伙伴，松开就停下来。'
-    focusHint.textContent = '↑ 前进 · ↓ 后退 · ← → 转弯 · 红色按钮停止'
+    modeHelp.textContent = state.capabilities?.joints ? '慢慢调整关节，把夹爪对准物体，再合拢。' : '按住箭头开动伙伴，松开就停下来。'
+    focusHint.textContent = state.capabilities?.joints ? '调整关节 → 对准物体 → 合拢夹爪 → 抬起搬运' : '↑ 前进 · ↓ 后退 · ← → 转弯 · 红色按钮停止'
     cameraTips.hidden = true
     return
   }
@@ -1058,7 +1069,7 @@ registerForm.addEventListener('submit', async (event) => {
     logEvent('library', `added ${kind} ${payload.entry.id}`)
     closeRegister()
     const catalog = await fetch('/api/catalog', { cache: 'no-store' }).then((r) => r.json())
-    state.catalog = { scenes: catalog.scenes || [], robots: catalog.robots || [] }
+    state.catalog = { scenes: catalog.scenes || [], robots: catalog.robots || [], challenges: catalog.challenges || [] }
     if (kind === 'robot') state.selectedRobotId = payload.entry.id
     else state.selectedSceneId = payload.entry.id
     renderLibrary()
@@ -1090,7 +1101,7 @@ function renderJointControls(info) {
     return
   }
   jointSliders.innerHTML = ''
-  jointCount.textContent = `${names.length} axes`
+  jointCount.textContent = `${names.length} 个关节`
   const inputs = {}
   const labels = {}
   for (const name of names) {
@@ -1101,7 +1112,7 @@ function renderJointControls(info) {
     const row = document.createElement('div')
     row.className = 'row'
     const title = document.createElement('span')
-    title.textContent = name
+    title.textContent = ({Rotation:'↔ 底座转动',Pitch:'↕ 肩膀抬起',Elbow:'↕ 肘部弯曲',Wrist_Pitch:'↕ 手腕俯仰',Wrist_Roll:'↻ 手腕旋转',Jaw:'✋ 夹爪开合'})[name] || name
     const readout = document.createElement('strong')
     readout.textContent = Number(value).toFixed(3)
     row.append(title, readout)
@@ -1539,7 +1550,7 @@ async function refreshStatus() {
 async function boot() {
   state.cfg=await fetch('/api/config',{cache:'no-store'}).then((r)=>r.json())
   const catalog=await fetch('/api/catalog',{cache:'no-store'}).then((r)=>r.json())
-  state.catalog={scenes:catalog.scenes||[],robots:catalog.robots||[]}
+  state.catalog={scenes:catalog.scenes||[],robots:catalog.robots||[],challenges:catalog.challenges||[]}
   rendererValue.textContent=state.cfg.renderer;signalEndpoint.textContent=`${state.cfg.stream.host}:${state.cfg.stream.signalPort}/tcp`;mediaEndpoint.textContent=`${state.cfg.stream.host}:${state.cfg.stream.mediaPort}/udp`;bridgeEndpoint.textContent=`${state.cfg.bridgeHost}:${state.cfg.bridgePort}`;streamEndpoint.textContent=`${state.cfg.stream.host}:${state.cfg.stream.signalPort}`;sdkValue.textContent=state.cfg.renderer==='mock'?'not required in mock':(state.cfg.nativeBundleAvailable?'bundle ready':'bundle missing')
   renderLibrary();updateSpeedLabels();setMode('camera')
   try { const payload=await fetch('/api/session',{cache:'no-store'}).then((r)=>r.json()); if(payload.ok)applySession(payload.session) } catch {}
@@ -1547,20 +1558,30 @@ async function boot() {
   else openLauncher()
   if(state.cfg.renderer==='mock')startMockSurface()
   else if(state.cfg.renderer==='mjpeg')startCompatSurface()
-  else {showNativeOverlay('等待进入体验','选择世界和伙伴后连接WebRTC画面。',false)}
+  else {showNativeOverlay('等待进入体验','选择伙伴和关卡后连接 WebRTC 画面。',false)}
   await refreshStatus()
-  connectAssistant()
+  let teacher=true
+  try {const response=await fetch('/platform/me',{signal:AbortSignal.timeout(3000)});if(response.ok)teacher=(await response.json()).principal.role==='teacher'} catch {}
+  if(teacher)connectAssistant()
+  else {assistantInput.disabled=true;assistantForm.querySelector('button[type=submit],button').disabled=true;assistantHint.textContent='此功能由老师管理'}
 }
 
 setInterval(()=>{if(state.mode==='robot'&&state.pressed.size>0)sendMotion(computeMotion(),'heartbeat')},100)
+// Track actual presentation separately from received/dropped frame counters.
+let presentedFrames=0,lastPresentedAt=null
+if(video.requestVideoFrameCallback){
+  const presented=()=>{presentedFrames++;lastPresentedAt=performance.now();video.requestVideoFrameCallback(presented)}
+  video.requestVideoFrameCallback(presented)
+}
 // Local diagnostic feedback: decoded video, not merely successful signaling.
 setInterval(()=>{
   if(state.cfg?.renderer!=='native')return
   const quality=video.getVideoPlaybackQuality?.()
   fetch('/api/stream/client-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-    surface:state.surface,width:video.videoWidth,height:video.videoHeight,
+    visible:!document.hidden,surface:state.surface,width:video.videoWidth,height:video.videoHeight,
     frames:quality?.totalVideoFrames||0,dropped:quality?.droppedVideoFrames||0,
-    time:video.currentTime,fps:state.nativeStats?.fps,mbps:state.nativeStats?.currentBitrate,
+    time:video.currentTime,fps:state.nativeStats?.fps,mbps:state.nativeStats?.currentBitrate,rttMs:state.nativeStats?.rtd,
+    presentedFrames,lastPresentedAgeMs:lastPresentedAt===null?null:performance.now()-lastPresentedAt,
   })}).catch(()=>{})
 },5000)
 
@@ -1599,7 +1620,8 @@ setInterval(async () => {
 window.addEventListener('beforeunload',()=>{if(state.mode==='robot')clearKeys(true)})
 
 const childUI = initChildUI({getState:()=>state,setMode,openLauncher,clearKeys})
-boot().catch((err)=>{console.error(err);streamTitle.textContent='实验室暂时没有连接';streamText.textContent='请让老师检查服务，再试一次。';streamOverlay.hidden=false})
+initChallengesUI({getState:()=>state,guide:childUI.guide,launch:()=>{if(state.challenge?.level){state.selectedChallengeId=state.challenge.level.id;renderLibrary()}return launchSelectedSession()},openLauncher,clearKeys})
+boot().catch((err)=>{console.error(err);logEvent('page-init-error',err.message);streamTitle.textContent='页面没有准备好';streamText.textContent='请刷新页面再试一次，也可以请老师查看操作日志。';streamOverlay.hidden=false})
 
 // --- the legged robot's policy ----------------------------------------------
 //
@@ -1663,3 +1685,5 @@ async function refreshPolicy() {
 
 setInterval(refreshPolicy, 2000)
 refreshPolicy()
+
+initAccessClient(async()=>{clearKeys(true);await disconnectNativeSurface()})

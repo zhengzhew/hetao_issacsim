@@ -3,16 +3,28 @@ param(
     [string]$IsaacDir = 'D:\IsaacSim\6.0.1',
     [int]$WebPort = 8080,
     [int]$BridgePort = 8765,
-    [string]$Scene = 'grid',
-    [string]$Robot = 'jetbot',
+    [string]$Scene = 'challenge-arm',
+    [string]$Robot = 'so101',
     [ValidateRange(320,1920)][int]$CaptureWidth = 1920,
     [ValidateRange(240,1080)][int]$CaptureHeight = 1080,
     [ValidateRange(1,60)][int]$CaptureFps = 60,
     [ValidateRange(20,95)][int]$CaptureQuality = 90,
     [ValidateSet('mjpeg','native')][string]$Renderer = 'native',
-    [string]$StreamHost = '127.0.0.1'
+    [string]$StreamHost = '',
+    [string]$StreamInterface = 'WLAN'
 )
 $ErrorActionPreference = 'Stop'
+if (-not $StreamHost) {
+    $adapter = [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+        Where-Object { $_.Name -eq $StreamInterface -and $_.OperationalStatus -eq 'Up' }
+    $addresses = @($adapter | ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+        Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' -and $_.Address.ToString() -notlike '169.254.*' })
+    if ($addresses.Count -ne 1) {
+        throw 'Cannot select one LAN IPv4 address. Specify -StreamHost <server-IP>, or 127.0.0.1 for local-only use.'
+    }
+    $StreamHost = $addresses[0].Address.ToString()
+}
+Write-Output "WebRTC stream host: $StreamHost"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $logDir = Join-Path $projectRoot 'logs'
 $uploadDir = Join-Path $projectRoot 'uploads'
@@ -39,6 +51,21 @@ if ($Component -in @('All','Web')) { Assert-PortFree $WebPort }
 if ($Renderer -eq 'native' -and $Component -in @('All','Web') -and
     -not (Test-Path -LiteralPath (Join-Path $projectRoot 'web\native-sdk.js'))) {
     throw 'WebRTC client bundle missing. Run npm ci and npm run build:native in the project directory first.'
+}
+
+# Resolve Node before starting Isaac, including common installations outside Explorer's PATH.
+if ($Component -in @('All','Web')) {
+    $nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+    $nodeExe = if ($nodeCommand) { $nodeCommand.Source } else { $null }
+    if (-not $nodeExe) {
+        $candidates = @(
+            (Join-Path $env:ProgramFiles 'nodejs\node.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\nodejs\node.exe'),
+            (Join-Path $env:USERPROFILE '.codearts\runtimes\node\node.exe')
+        )
+        $nodeExe = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    }
+    if (-not $nodeExe) { throw 'Cannot locate Node.js. Install Node.js before starting services.' }
 }
 
 # Both processes share these settings and the same Windows upload directory.
@@ -87,9 +114,7 @@ if ($Component -in @('All','Bridge')) {
     Write-Output "Bridge launcher PID=$($bridgeProcess.Id); logs=$logDir"
 }
 if ($Component -in @('All','Web')) {
-    $nodeExe = (& node -p 'process.execPath').Trim()
-    if (-not (Test-Path -LiteralPath $nodeExe)) { throw 'Cannot locate Node.js executable.' }
-    $webProcess = Start-Process -FilePath $nodeExe -ArgumentList 'server/index.js' -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir "web-$stamp.log") -RedirectStandardError (Join-Path $logDir "web-$stamp.err.log") -PassThru
+    $webProcess = Start-Process -FilePath $nodeExe -ArgumentList ('"{0}"' -f (Join-Path $projectRoot 'server\index.js')) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logDir "web-$stamp.log") -RedirectStandardError (Join-Path $logDir "web-$stamp.err.log") -PassThru
     $webProcess.Id | Set-Content (Join-Path $runDir 'web-native.pid')
     Write-Output "Web PID=$($webProcess.Id); URL=http://localhost:$WebPort"
 }

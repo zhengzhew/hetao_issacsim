@@ -10,7 +10,10 @@
       "adapter": "differential-drive",
       "asset_path": "/Isaac/Robots/NVIDIA/Jetbot/jetbot.usd",
       "prim_path": "/World/WebRobot",
-      "wheel_dof_names": ["left_wheel_joint", "right_wheel_joint"],
+      "wheel_dof_names": [
+        "left_wheel_joint",
+        "right_wheel_joint"
+      ],
       "wheel_radius": 0.03,
       "wheel_base": 0.1125,
       "spawn_z": 0.05,
@@ -27,10 +30,13 @@
       "adapter": "differential-drive",
       "asset_path": "/Isaac/Robots/NVIDIA/Carter/carter_v1.usd",
       "prim_path": "/World/WebRobot",
-      "wheel_dof_names": ["left_wheel", "right_wheel"],
+      "wheel_dof_names": [
+        "left_wheel",
+        "right_wheel"
+      ],
       "wheel_radius": 0.24,
       "wheel_base": 0.54,
-      "spawn_z": 0.30,
+      "spawn_z": 0.3,
       "max_linear_speed": 1.0,
       "max_lateral_speed": 0.0,
       "max_angular_speed": 1.5,
@@ -44,10 +50,13 @@
       "adapter": "differential-drive",
       "asset_path": "/Isaac/Robots/NVIDIA/NovaCarter/nova_carter.usd",
       "prim_path": "/World/WebRobot",
-      "wheel_dof_names": ["left_wheel_joint", "right_wheel_joint"],
+      "wheel_dof_names": [
+        "left_wheel_joint",
+        "right_wheel_joint"
+      ],
       "wheel_radius": 0.14,
       "wheel_base": 0.413,
-      "spawn_z": 0.20,
+      "spawn_z": 0.2,
       "max_linear_speed": 1.0,
       "max_lateral_speed": 0.0,
       "max_angular_speed": 1.2,
@@ -63,7 +72,11 @@
       "adapter": "holonomic-drive",
       "asset_path": "/Isaac/Robots/NVIDIA/Kaya/kaya.usd",
       "prim_path": "/World/WebRobot",
-      "wheel_dof_names": ["axle_0_joint", "axle_1_joint", "axle_2_joint"],
+      "wheel_dof_names": [
+        "axle_0_joint",
+        "axle_1_joint",
+        "axle_2_joint"
+      ],
       "com_prim_subpath": "base_link/control_offset",
       "spawn_z": 0.02,
       "max_linear_speed": 0.7,
@@ -71,6 +84,71 @@
       "max_angular_speed": 1.5,
       "max_wheel_speed": 35.0,
       "mock_shape": "kaya"
+    },
+    {
+      "id": "so101",
+      "name": "SO-101 机械臂",
+      "adapter": "joint-position",
+      "asset_path": "upload://challenges/so101/SO-ARM101-USD.usd",
+      "prim_path": "/World/WebRobot",
+      "fix_root": true,
+      "spawn_at_origin": true,
+      "spawn_z": -0.030081447,
+      "drive_stiffness": 35,
+      "drive_damping": 2,
+      "drive_max_force": 3,
+      "contact_friction": 1.5,
+      "max_depenetration_velocity": 0.3,
+      "joint_gains": {
+        "Jaw": {
+          "stiffness": 5,
+          "damping": 0.25,
+          "max_force": 0.12
+        }
+      },
+      "solver_velocity_iterations": 4,
+      "physics_hz": 200,
+      "grip_pads": true
+    },
+    {
+      "id": "microduck",
+      "name": "Pollen MicroDuck",
+      "description": "Pollen MicroDuck 双足机器人，使用本地 bundle 的策略控制 14 个关节。",
+      "adapter": "microduck-policy",
+      "asset_path": "upload://challenges/microduck/robot_allcollisions.usda",
+      "prim_path": "/World/WebRobot",
+      "fix_root": false,
+      "spawn_at_origin": true,
+      "spawn_z": 0.005,
+      "home_position": {
+        "left_hip_yaw": 0.0,
+        "left_hip_roll": -0.0873,
+        "left_hip_pitch": -0.4579,
+        "left_knee": -0.0049,
+        "left_ankle": 0.453,
+        "neck_pitch": 0.3491,
+        "head_pitch": 0.3491,
+        "head_yaw": 0.0,
+        "head_roll": 0.0,
+        "right_hip_yaw": 0.0,
+        "right_hip_roll": 0.0873,
+        "right_hip_pitch": 0.4579,
+        "right_knee": 0.0049,
+        "right_ankle": -0.453
+      },
+      "drive_stiffness": 0.2,
+      "drive_damping": 0.01928,
+      "drive_max_force": 0.96,
+      "solver_position_iterations": 8,
+      "solver_velocity_iterations": 2,
+      "max_depenetration_velocity": 1.0,
+      "policy": {
+        "physics_hz": 200,
+        "contact_friction": 1.0
+      },
+      "max_linear_speed": 0.4,
+      "max_lateral_speed": 0.3,
+      "max_angular_speed": 1.0
     }
   ]
 }

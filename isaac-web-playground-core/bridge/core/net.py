@@ -28,12 +28,13 @@ def stage_info() -> dict:
 def dispatch(op: str, args: dict) -> object:
     timeline = omni.timeline.get_timeline_interface()
     if op == "policy_status":
-        # This build has no MicroDuck policy engine. Report that explicitly
-        # instead of emitting an exception for every frontend status poll.
+        # Legacy policy-panel protocol is disabled; challenge controls and
+        # robot_info.policy_runtime expose the MicroDuck integration.
         return {"available": False, "engaged": False}
     if op == "ping":
         return {
             "service": "isaac-web-playground-stage2",
+            "queue": WORK.status(),
             "playing": bool(timeline.is_playing()),
             "mock": False,
             "session": session_info(),
@@ -63,6 +64,12 @@ def dispatch(op: str, args: dict) -> object:
                 "error": _CAPTURE["error"],
             },
         }
+    if op.startswith("challenge_"):
+        from . import challenges
+        if op == "challenge_start": return challenges.start(str(args.get("id", "")))
+        if op == "challenge_status": return challenges.status()
+        if op == "challenge_action": return challenges.action(str(args.get("action", "")))
+        raise ValueError("Unknown challenge operation")
     if op == "get_catalog":
         return {"scenes": catalog.SCENES, "robots": catalog.ROBOTS}
     if op == "reload_catalog":
@@ -155,6 +162,9 @@ def dispatch(op: str, args: dict) -> object:
         if TELEOP["engaged"] and not (args or {}).get("force"):
             raise ValueError(f"a leader arm is driving this robot ({TELEOP['source']}); disengage it first")
         result = session.ROBOT.reset()
+        if isinstance(session.ROBOT, session.MicroDuckAdapter):
+            from .challenges import reset_progress
+            reset_progress()
         # Keep the slew integrator with the arm, or the next sample jumps.
         TELEOP["last_positions"] = dict(getattr(session.ROBOT, "targets", {}) or {})
         return result
@@ -207,61 +217,46 @@ def note_loop_timing(requests: float, policy: float, render: float) -> None:
     LOOP_TIMING.update({"n": 0, "requests": 0.0, "policy": 0.0, "render": 0.0, "at": now})
 
 
-WORK: "queue.Queue[tuple[str, dict, queue.Queue]]" = queue.Queue(maxsize=256)
+from .work_queue import WorkQueue
+WORK = WorkQueue()
+OP_TIMEOUTS = {"capture_frame": 20.0, "launch_session": 300.0, "challenge_start": 300.0, "inspect_asset": 90.0, "teleop_sample": .25}
 
 
-# Frames are worthless once they are late; scene loads legitimately take minutes.
-OP_TIMEOUTS = {"capture_frame": 20.0, "launch_session": 300.0, "inspect_asset": 90.0}
-
-
-def submit(op: str, args: dict, timeout: float | None = None):
+def submit(op: str, args: dict, timeout: float | None = None, expires_at=None):
     if op == "capture_frame":
         args = dict(args or {}, _defer_encode=True)
-    if timeout is None:
-        timeout = OP_TIMEOUTS.get(op, 60.0)
-    reply: "queue.Queue[tuple[bool, object]]" = queue.Queue(maxsize=1)
+    ttl = OP_TIMEOUTS.get(op, 10.0) if timeout is None else timeout
+    if expires_at is not None:
+        ttl = min(ttl, float(expires_at) / 1000 - time.time())
+    if ttl <= 0:
+        raise RuntimeError("expired before queueing")
+    work = WORK.put(op, args, ttl)
     try:
-        WORK.put((op, args, reply), timeout=5.0)
-    except queue.Full:
-        raise RuntimeError("bridge is saturated; try again")
-    try:
-        ok, payload = reply.get(timeout=timeout)
+        ok, payload = work.reply.get(timeout=ttl)
     except queue.Empty:
-        raise RuntimeError(f"{op} did not finish within {timeout:g}s") from None
+        WORK.cancel(work)
+        raise RuntimeError(f"{op} expired while waiting") from None
     if ok:
         return finish_capture(payload) if op == "capture_frame" else payload
     raise RuntimeError(payload)
 
 
 def drain() -> None:
-    pending: list[tuple[str, dict, "queue.Queue"]] = []
-    while True:
-        try:
-            pending.append(WORK.get_nowait())
-        except queue.Empty:
+    # Leave rendering/physics time every frame, even under status polling load.
+    until = time.monotonic() + .005
+    for _ in range(64):
+        work = WORK.take()
+        if work is None:
             break
-
-    # Only the newest frame request is worth rendering; the rest are already
-    # stale by the time we get here, and each would cost its own kit.update().
-    last_capture = max((i for i, item in enumerate(pending) if item[0] == "capture_frame"), default=-1)
-
-    # Run the arm before the camera. A teleop sample is a control input with a
-    # human waiting on it; a frame is a picture that can be 30 ms later.
-    order = sorted(range(len(pending)), key=lambda i: 0 if pending[i][0] == "teleop_sample" else 1)
-
-    for index in order:
-        op, args, reply = pending[index]
-        if op == "capture_frame" and index != last_capture:
-            reply.put((False, "superseded by a newer frame request"))
-            continue
         try:
-            reply.put((True, dispatch(op, args or {})))
+            work.finish(True, dispatch(work.op, work.args or {}))
         except Exception as exc:
             traceback.print_exc()
-            reply.put((False, f"{type(exc).__name__}: {exc}"))
-        # A long op must not be able to suspend either watchdog.
+            work.finish(False, f"{type(exc).__name__}: {exc}")
         enforce_watchdog()
         enforce_teleop_watchdog()
+        if time.monotonic() >= until:
+            break
 
 
 # --- idle throttling --------------------------------------------------------
@@ -304,7 +299,7 @@ class Handler(socketserver.StreamRequestHandler):
                 try:
                     msg = json.loads(line)
                     msg_id = msg.get("id")
-                    result = submit(str(msg["op"]), msg.get("args") or {})
+                    result = submit(str(msg["op"]), msg.get("args") or {}, expires_at=msg.get("expiresAt"))
                     payload = {"id": msg_id, "ok": True, "result": result}
                 except Exception as exc:
                     payload = {"id": msg_id, "ok": False, "error": str(exc)}

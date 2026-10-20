@@ -44,6 +44,22 @@
       "camera_eye": [5.0, -5.0, 4.0],
       "camera_target": [0.0, 0.0, 0.0],
       "mock_world": "grid"
+    },
+    {
+      "id": "challenge-arm",
+      "name": "机械臂任务台",
+      "asset_path": "procedural://challenge",
+      "camera_eye": [-0.45, -0.7, 0.75],
+      "camera_target": [0.18, 0, 0.1],
+      "spawn": [0, 0, 0]
+    },
+    {
+      "id": "challenge-duck",
+      "name": "小鸭子运动场",
+      "asset_path": "procedural://challenge",
+      "camera_eye": [1.2, -1.5, 1],
+      "camera_target": [0.35, 0, 0.12],
+      "spawn": [0, 0, 0]
     }
   ]
 }

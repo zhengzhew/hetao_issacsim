@@ -23,3 +23,13 @@ __pycache__/
 
 # Machine-specific Windows/WSL deployment values.
 deploy/windows/local.bat
+
+# Generated portable client downloads (build sources live under tools).
+/web/downloads/
+
+# Private cloud configuration, shared secrets and persistent runtime data.
+/deploy/cloud/local/
+
+# Per-arm calibration stays on the device; tests use synthetic fixtures.
+/configs/leader_arm_calibration.json
+/configs/leader_arm_isaac_calibration.json

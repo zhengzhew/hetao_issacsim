@@ -1,0 +1,27 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "publicOrigin": "",
+  "secureCookies": false,
+  "stations": [
+    {
+      "id": "local-1",
+      "name": "本地体验台",
+      "storeId": "local",
+      "webPort": 8081,
+      "bridgePort": 8765,
+      "signalPort": 49100,
+      "mediaPort": 47998,
+      "gpu": 0,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30
+    }
+  ],
+  "localConnector": {
+    "enabled": true,
+    "interfaces": [
+      "WLAN"
+    ]
+  }
+}

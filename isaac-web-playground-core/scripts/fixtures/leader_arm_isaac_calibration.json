@@ -1,0 +1,52 @@
+{
+  "format": "lerobot_style_desheng_v401",
+  "version": 1,
+  "resolution": 4096,
+  "normalization": "range_m100_100",
+  "role": "leader",
+  "note": "Synthetic test data only. Never use as a real arm calibration.",
+  "motors": {
+    "1": {
+      "id": 1,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 820,
+      "range_max": 3180
+    },
+    "2": {
+      "id": 2,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 840,
+      "range_max": 3160
+    },
+    "3": {
+      "id": 3,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 860,
+      "range_max": 3140
+    },
+    "4": {
+      "id": 4,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 880,
+      "range_max": 3120
+    },
+    "5": {
+      "id": 5,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 900,
+      "range_max": 3100
+    },
+    "6": {
+      "id": 6,
+      "drive_mode": 1,
+      "homing_offset": 0,
+      "range_min": 920,
+      "range_max": 3080
+    }
+  }
+}

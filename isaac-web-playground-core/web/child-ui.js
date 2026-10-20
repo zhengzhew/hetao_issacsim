@@ -26,7 +26,7 @@ export function initChildUI(api) {
   const $ = id => document.getElementById(id)
   document.body.classList.add('child-ui')
   const launcher=$('launcher'), panel=launcher.querySelector('.launcher-panel')
-  let step=1, muted=false, audioContext, message='你好！我是小芽。先选一个想去的地方吧。', parentUntil=0, answer=0, gateAction=null, lastFocus=null
+  let step=1, muted=false, audioContext, message='你好！我是小芽。先选一位机器人伙伴吧。', parentUntil=0, answer=0, gateAction=null, lastFocus=null
   const voicePlayer = document.createElement('audio')
   voicePlayer.id='guideAudio';voicePlayer.preload='none';document.body.append(voicePlayer)
   try { muted=localStorage.getItem('isaac-child-muted')==='true' } catch {}
@@ -69,18 +69,22 @@ export function initChildUI(api) {
   }
   const buddyMarkup=`<div class="buddy" data-mood="happy">${mascot}</div><div><span class="buddy-name">小芽 · 你的机器人伙伴</span><p class="buddy-message" aria-live="polite">${message}</p></div><button type="button" class="speak-guide" aria-label="再听一次引导">♬<span>听一听</span></button>`
   const banner=document.createElement('section');banner.className='buddy-banner';banner.innerHTML=buddyMarkup
-  document.querySelector('.control-panel').prepend(banner)
+  const footer=document.createElement('div');footer.className='workspace-footer'
+  document.querySelector('.workspace').append(footer)
+  const exploration=document.querySelector('.control-hero')
+  footer.append(exploration)
+  exploration.append(banner)
   const libraryBuddy=document.createElement('section');libraryBuddy.className='buddy-banner library-buddy';libraryBuddy.innerHTML=buddyMarkup
   panel.querySelector('.launcher-head').after(libraryBuddy)
   const toolbar=document.createElement('nav');toolbar.className='child-toolbar';toolbar.setAttribute('aria-label','常用功能')
-  toolbar.innerHTML='<button id="childHome" aria-label="回到选择世界">⌂<span>选世界</span></button><button id="childSound" aria-pressed="true">♫<span>声音开</span></button><button id="parentEntry">⚙<span>家长 / 老师</span></button>'
+  toolbar.innerHTML='<button id="childHome" aria-label="回到选择伙伴和关卡">⌂<span>选伙伴</span></button><button id="childSound" aria-pressed="true">♫<span>声音开</span></button><button id="parentEntry">⚙<span>家长 / 老师</span></button>'
   document.querySelector('.topbar').append(toolbar)
-  const rail=document.createElement('div');rail.className='step-rail';rail.innerHTML='<span data-step="1"><b>1</b>选世界</span><i></i><span data-step="2"><b>2</b>选伙伴</span><i></i><span data-step="3"><b>3</b>出发探索</span>'
+  const rail=document.createElement('div');rail.className='step-rail';rail.innerHTML='<span data-step="1"><b>1</b>选伙伴</span><i></i><span data-step="2"><b>2</b>选挑战</span><i></i><span data-step="3"><b>3</b>出发探索</span>'
   panel.querySelector('.launcher-head').after(rail)
   const blocks=panel.querySelectorAll('.library-block')
   blocks[0].id='childWorldStep';blocks[1].id='childRobotStep'
   const previous=document.createElement('button');previous.id='previousStep';previous.className='secondary';previous.textContent='← 上一步'
-  const next=document.createElement('button');next.id='nextStep';next.className='primary';next.textContent='选好啦，找伙伴 →'
+  const next=document.createElement('button');next.id='nextStep';next.className='primary';next.textContent='选好啦，选挑战 →'
   panel.querySelector('.launcher-footer').prepend(previous)
   panel.querySelector('.launcher-footer').append(next)
 
@@ -131,16 +135,16 @@ export function initChildUI(api) {
     $('launchSession').classList.toggle('child-step-hidden',step!==2)
     previous.hidden=step===1;next.hidden=step!==1
     rail.querySelectorAll('[data-step]').forEach(el=>el.classList.toggle('active',Number(el.dataset.step)===step))
-    panel.querySelector('h1').textContent=step===1?'今天，去哪里探索？':'选一位机器人伙伴吧！'
-    panel.querySelector('.launcher-head p').textContent=step===1?'点一张卡片，选一个你喜欢的世界。':'每个伙伴都有自己的本领。'
-    guide(step===1?'你好！我是小芽。先选一个想去的地方吧。':'世界选好啦！现在选一位机器人伙伴。')
+    panel.querySelector('h1').textContent=step===1?'今天，和谁一起挑战？':'选一个挑战吧！'
+    panel.querySelector('.launcher-head p').textContent=step===1?'两位伙伴，选一个想挑战的任务。':'选择任务，准备好就一起出发。'
+    guide(step===1?'你好！我是小芽。先选一位机器人伙伴吧。':'伙伴选好啦！现在选一个挑战。')
   }
   next.onclick=()=>{showStep(2);previous.focus()};previous.onclick=()=>showStep(1)
-  $('sceneLibrary').addEventListener('click',event=>{const card=event.target.closest('[data-scene-id]');if(card)guide(`选中了${sceneNames[card.dataset.sceneId]||'这个世界'}！点绿色按钮，去找机器人伙伴。`)})
-  $('robotLibrary').addEventListener('click',event=>{const card=event.target.closest('[data-robot-id]');if(card)guide(`选中了${card.querySelector('strong').textContent}！准备好就一起出发。`)})
-  new MutationObserver(()=>{if(!launcher.hidden){showStep(1);document.querySelector('.workspace').inert=true}else{document.querySelector('.workspace').inert=false;guide('准备好啦！按住方向按钮移动，松开就停。');api.setMode('robot')}}).observe(launcher,{attributes:true,attributeFilter:['hidden']})
+  $('sceneLibrary').addEventListener('click',event=>{const card=event.target.closest('[data-scene-id]');if(card)guide('伙伴选好啦！点绿色按钮选挑战。')})
+  $('robotLibrary').addEventListener('click',event=>{const card=event.target.closest('[data-level-id]');if(card)guide(`选中了${card.querySelector('strong').textContent}！准备好就一起出发。`)})
+  new MutationObserver(()=>{if(!launcher.hidden){showStep(1);document.querySelector('.workspace').inert=true}else{document.querySelector('.workspace').inert=false;guide(api.getState().challenge?.level?.instruction||'准备好啦！选择关卡开始挑战。');api.setMode('robot')}}).observe(launcher,{attributes:true,attributeFilter:['hidden']})
   $('stop').addEventListener('click',()=>guide('停一停，观察一下周围吧。','calm'))
-  document.querySelectorAll('.mode').forEach(button=>button.addEventListener('click',()=>guide(button.dataset.mode==='robot'?'按住方向按钮移动，松开就停。':'按住箭头转一转、拉近看看。')))
+  document.querySelectorAll('.mode').forEach(button=>button.addEventListener('click',()=>guide(button.dataset.mode==='robot'?(api.getState().capabilities?.joints?'慢慢调整关节，把夹爪对准物体，再合拢。':'按住方向按钮移动，松开就停。'):'按住箭头转一转、拉近看看。')))
   const waiting=document.createElement('div');waiting.id='childWaiting';waiting.innerHTML=`${mascot}<h2>实验室正在准备中</h2><p>等画面出现，就能和机器人一起探索啦。</p><span>NVIDIA Isaac Sim · 真实机器人仿真</span>`;$('viewerShell').append(waiting)
   let previousReady=false
   setInterval(()=>{
