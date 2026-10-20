@@ -1,4 +1,6 @@
 import copy
+import hashlib
+from unittest.mock import patch
 import importlib.util
 import json
 from pathlib import Path
@@ -19,6 +21,9 @@ def load(name):
 
 manage = load("manage")
 sim = load("sim_entry")
+spec = importlib.util.spec_from_file_location("fetch_assets", ROOT / "scripts/fetch_challenge_assets.py")
+assets = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(assets)
 
 
 class CloudTests(unittest.TestCase):
@@ -75,6 +80,28 @@ class CloudTests(unittest.TestCase):
             self.assertEqual(env["ISAAC_UPLOAD_DIR"], str(data / "cloud-1/uploads"))
             with self.assertRaises(ValueError):
                 sim.command(config, "missing", ROOT, env)
+
+    def test_asset_cache_rejects_corruption_and_exports_only_locked_files(self):
+        with tempfile.TemporaryDirectory(prefix="isaac-cloud-test-") as folder:
+            base = Path(folder)
+            source = base / "source"
+            source.mkdir()
+            (source / "model.usd").write_bytes(b"known-model")
+            (source / "private.txt").write_text("keep out")
+            checks = {"model.usd": hashlib.sha256(b"known-model").hexdigest()}
+            cache = base / "cache"
+            with patch.object(assets, "OUT", source), patch.object(assets, "CHECKS", checks):
+                assets.export_cache(cache)
+                self.assertEqual([p.name for p in cache.iterdir()], ["model.usd"])
+            with patch.object(assets, "OUT", base / "destination"), patch.object(assets, "CHECKS", checks), patch.object(assets.urllib.request, "urlopen", side_effect=AssertionError("No network expected")):
+                assets.fetch(cache)
+                self.assertEqual(json.loads((base / "destination/sha256.json").read_text()), checks)
+            (cache / "model.usd").write_bytes(b"corrupted")
+            with patch.object(assets, "OUT", base / "bad"), patch.object(assets, "CHECKS", checks):
+                with self.assertRaises(ValueError):
+                    assets.fetch(cache)
+            with self.assertRaises(ValueError):
+                assets.checked_file(source, "../outside", "0" * 64)
 
     def test_export_contains_deployment_and_excludes_local_credentials_and_calibration(self):
         with tempfile.TemporaryDirectory(prefix="isaac-cloud-test-") as folder:

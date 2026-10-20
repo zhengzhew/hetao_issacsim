@@ -122,3 +122,24 @@ python deploy/cloud/manage.py bundle --output run/cloud-source.tar.gz
 4. down / up 后账户和绑定保留；缓存与资产不重复下载。
 5. 云平台停机不收费模式确认，重启后 VPN/网页/视频地址仍可达。
 6. 两个独立体验台并发与 8 小时稳定性另行验收。
+
+## 镜像源不可达时
+
+若云主机直连 Docker Hub 超时，可在部署目录的 `.env` 中指定 Docker 官方镜像的 ECR 地址：
+
+```dotenv
+NODE_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim
+PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.12-slim-bookworm
+```
+
+构建参数只改变基础镜像来源，不更改宿主机的全局 Docker 镜像源。
+
+若 GitHub 资产下载失败，可在已准备好资产的电脑导出经过完整校验的缓存：
+
+```powershell
+python scripts/fetch_challenge_assets.py --export-cache run/asset-cache
+```
+
+将这个目录上传到云端，例如 `/srv/hetao-isaac-assets`，在部署 `.env` 中加入
+`ASSET_CACHE_DIR=/srv/hetao-isaac-assets`，然后重新 build/up。构建仅复制清单中
+SHA256 匹配的资产；额外文件不会进入镜像，损坏文件会停止构建。缓存不提交 Git。

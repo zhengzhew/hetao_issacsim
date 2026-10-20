@@ -1,8 +1,18 @@
 {
-  "so101/SO-ARM101-USD.usd": "11f5f0bb5f2fae3eefebbcd07dfafc6b14602f6c4e5dae8f21a4a46892991006",
+  "microduck/NOTICE-MICRODUCK.md": "ccb0da6cb6e86e6e9ea7c4d2c94a8e84cd594c16824baf55fc9bab92a2c58ca3",
+  "microduck/payloads/Physics/mujoco.usda": "857628a559cee0d62c065c9fdcdf4004bc8d25cff0478bdf5ea254e94573b33f",
+  "microduck/payloads/Physics/physics.usda": "073e6a51e70a465aca786cd318ddc2f1b19df3f73c7f748bdf86ceb6abbd3aab",
+  "microduck/payloads/Physics/physx.usda": "b0252dfd1943b2e2cddc38ee131a220fe4578b8ef1945a561a660e47b87b865d",
+  "microduck/payloads/base.usda": "f897ff38f59e3b394da73208c4308ed9bfa6f2eccc25a365f6e9110f903c9c84",
+  "microduck/payloads/geometries.usd": "3d72f8a292c082f05f37cebccf0b715ded43de0e2bb0d69475a809514ed5d4ed",
+  "microduck/payloads/instances.usda": "a50e49b366dfe11aa13464447cda9d4ed06cc6c8a3ccd22e90a227eccc6ec4ab",
+  "microduck/payloads/materials.usda": "2156e641718e7e993f877e6d1aa1099fb18e38dc69000fb10dd3858aa7281aef",
+  "microduck/payloads/robot.usda": "3e7f37c5efe01873e9e4053d38698a922a1840e5105b807dc8472e8d4b3746fb",
   "microduck/policies/alpha_sitstand.onnx": "c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8",
   "microduck/policies/alpha_stand.onnx": "1569268713e40deea795dd2922dba50d3621e15a872855408b6b1b125b1c094b",
   "microduck/policies/alpha_walking.onnx": "e36332d383997d51401897734cd3e79cf5038406feddb18b4d57ecfb141daa6c",
+  "microduck/policies/ball_kick_right.onnx": "147a32c388c6b19111b3ac3b550a9a6dc8b8bf267118af4d8c3712522eedb5af",
   "microduck/policies/roulade.onnx": "3d60da08fc13f29c1b57f41977aa898132c0d60042100149d8e775affcbca32b",
-  "microduck/policies/ball_kick_right.onnx": "147a32c388c6b19111b3ac3b550a9a6dc8b8bf267118af4d8c3712522eedb5af"
+  "microduck/robot_allcollisions.usda": "88c990a66cd4d4e60dfd2c9c036711e201d431ddd9fa0dbd06bf9ad3825f531b",
+  "so101/SO-ARM101-USD.usd": "11f5f0bb5f2fae3eefebbcd07dfafc6b14602f6c4e5dae8f21a4a46892991006"
 }

@@ -114,6 +114,7 @@ def bundle(destination):
     files.extend(ROOT / "scripts" / n for n in ("build_native.mjs", "fetch_challenge_assets.py"))
     files.extend(p for p in HERE.glob("*") if p.is_file() and p.suffix in (".py", ".mjs", ".yaml", ".md") or
                  p.is_file() and p.name.startswith("Dockerfile."))
+    files.append(HERE / "empty-assets/.gitkeep")
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(destination, "x:gz") as archive:
         for file in sorted(set(files)):
