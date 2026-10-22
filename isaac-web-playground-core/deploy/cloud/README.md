@@ -1,153 +1,126 @@
-# 云端试运行（Linux、独立 GPU、受信 VPN）
+# 腾讯云 TencentOS 4：从 GitHub 拉取源码部署
 
-本目录是第一阶段部署入口：一个体验台，gateway / worker / sim 三个容器。
-Windows 原有启动方式保留。尚需在真实 Linux GPU 主机上构建镜像并验收；
-本机通过的路由、配置测试不能证明 GPU 兼容或远程视频质量。
+目标是现有 **TencentOS Server 4、L20 48 GB、50 GB 系统盘 + 70 GB /data 数据盘**，一个独立体验台。安装和更新都在服务器自己的终端执行；不需要 Windows 上传程序、SSH 私钥交给程序、阿里云元数据或重装操作系统。
 
-## 把 Codex 接入云主机
+本流程已有本机自动化验证，**尚未在这台腾讯云服务器完成 GPU、RPM 安装和浏览器视频实测**。磁盘预算是预检条件，不代表未来任何镜像版本都能在相同空间内安装。
 
-GitHub 用于版本管理；SSH 用于在你的云主机上读写文件、运行命令、部署及查看日志。
-可以继续在当前 Windows 聊天中工作，通过本机 OpenSSH 访问云主机，无需先在云端安装 Codex。
+## 1. 获取代码
 
-服务器准备好后提供：公网 IP（或可达的 VPN IP）、SSH 端口、用户名、操作系统、
-本机 SSH 私钥文件路径或已有 SSH Host 别名。不要发送私钥内容或云平台账号密码。
-使用密钥登录；服务器配置公钥，本机保存私钥。首次连接需核对主机指纹。
-SSH 入站按实际管理端 IP 配置，不需要为了部署开放 8081/8765 等内部接口。
-
-推荐流程：本地改动和测试 → 源码包/你授权后的 GitHub 提交 → SSH 部署 →
-云端真实测试 → 修复同步回本地。只改云端容器内部文件会在重建后丢失。
-本聊天不会因为使用 GitHub 就自动获得你的云主机权限。
-
-如果希望在桌面应用中直接打开远程项目，也可使用“设置 → Connections → SSH”：
-先配置本机 SSH Host 别名并确认能登录，再在远端安装和认证 Codex，最后选择远程项目目录。
-这与“当前本机聊天通过 ssh 执行命令”是两种方式，前者需要远端 Codex 运行环境。
-官方说明：https://learn.chatgpt.com/docs/remote-connections#connect-to-an-ssh-host
-
-## 前置环境
-
-- Ubuntu 22.04/24.04 x86_64，完整 NVIDIA GPU，具备 RTX 和 NVENC。
-- 兼容 Isaac Sim 6.0.1 的 NVIDIA 驱动、Docker Engine、Compose plugin、NVIDIA Container Toolkit。
-- 云端和体验电脑之间已配置可路由的私有 VPN，且允许媒体 UDP 双向通信。
-  本配置默认只让网页监听指定 VPN IPv4；它不会替你配置 VPN 或放开防火墙。
-- 云安全组不要向公网开放原生信令 TCP 49100、媒体 UDP 47998；
-  这些服务仅供 VPN 内体验电脑访问。worker 8081、bridge 8765 仅监听本机。
-- 准备可持久保存的数据盘，镜像仓库 nvcr.io、npm、PyPI、GitHub 下载可达。
-
-官方参考：
-- https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/requirements.html
-- https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/install_container.html
-- https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/manual_livestream_clients.html
-
-## 首次启动
-
-以下命令从 isaac-web-playground-core 目录运行；IP 是示例，必须换成 GPU 主机实际 VPN 地址。
-`--accept-eula` 表示已阅读并接受 NVIDIA Isaac Sim 许可；脚本不会代替用户自动接受。
+先用公司提供的方式登录服务器，然后执行：
 
 ```bash
-sudo python3 deploy/cloud/manage.py doctor
-sudo python3 deploy/cloud/manage.py init --directory /srv/hetao-isaac --stream-host 10.8.0.1 --gpu 0 --accept-eula
-sudo python3 deploy/cloud/manage.py up --directory /srv/hetao-isaac
-sudo python3 deploy/cloud/manage.py ready --directory /srv/hetao-isaac --timeout 600
+sudo dnf install -y git python3
+sudo mkdir -p /opt/hetao-isaac
+sudo git clone --depth 1 https://github.com/zhengzhew/hetao_issacsim.git /opt/hetao-isaac/repo
+cd /opt/hetao-isaac/repo/isaac-web-playground-core
 ```
 
-`up` 首次会下载基础镜像、构建前端并下载校验场景资产。CPU 镜像和 GPU 镜像分开。
-构建需要联网；后续不要在每场活动重新下载资产。建议首次成功后将镜像标签固定到镜像 digest，
-并保存包含宿主机驱动、Docker 和已下载镜像的云主机镜像。
+若仓库是私有的，使用已获得授权的 GitHub 账号或只读 deploy key；不要把 token 写进 clone URL 或提交到仓库。已有该目录时直接进入目录更新，不要覆盖或删除它。
 
-`ready` 检查真实桥接、场景 ready、原生串流启用、信令端口和客户端 bundle，
-**不代表浏览器收到了视频帧**。还必须从门店浏览器验证画面、FPS、丢帧和实际机械臂跟随。
-
-老师初始密码保存在 `/srv/hetao-isaac/state/platform/teacher-password.txt`；
-新云环境会生成独立密码，不读取或修改 Windows 上已有密码。
-进入 `http://10.8.0.1:8080/manage`，分别生成浏览器和采集器配对码。
-连接器只需改一次服务器地址并选择该机械臂自己的配置文件。
-现有配对凭证有效期仍为 12 小时；本次不改变角色权限或把局域网免配对扩大到公网/VPN。
-
-## 日常操作与账单
+## 2. 核对磁盘与网络
 
 ```bash
+findmnt /data
+df -h / /data
+```
+
+`/data` 必须是数据盘的真实挂载点，且已配置开机挂载。脚本不分区、不格式化、不移动已有 Docker 数据。数据盘缺失时安装和开机启动都会停止，避免大镜像落到系统盘。
+
+| 所在磁盘 | 路径与用途 |
+|---|---|
+| 50 GB 系统盘 | `/opt/hetao-isaac/repo` 源码，`/srv/hetao-isaac` 账户、上传、Kit 缓存与日志 |
+| 70 GB 数据盘 | `/data/docker` 镜像、容器层、Docker 构建缓存 |
+
+首次构建按系统盘空闲 12 GiB、数据盘空闲 45 GiB 预检；已有基础镜像后的构建按系统盘 6 GiB、数据盘 8 GiB 预检，构建阶段再检查。当前配置表的约 46 GiB + 65 GiB 可通过首次预算。相同文件系统上的预算会相加，不能用另一块盘的空闲空间抵扣。
+
+空间控制包括：经典 overlay2 存储、禁止 Docker 29 的 containerd 镜像存储重复保留压缩层、构建串行执行、共享网页镜像、4 GB 构建缓存回收目标、容器日志每份 10 MB/最多 3 份、Python/npm 下载缓存不保留。构建缓存回收目标不是硬磁盘配额，拉取/解包仍有临时空间开销。更新成功后只尝试删除本项目被替换的旧镜像标签，不强制删除，不运行全局 prune。
+
+由公司运维配置安全组及实际网络：
+
+| 入站端口 | 来源 | 用途 |
+|---|---|---|
+| TCP 22 | 管理电脑 | SSH 维护 |
+| TCP 80 | 公网可达 | IP 证书申请、自动续期 |
+| TCP 443 | 使用者电脑/门店出口 | 网页、登录、受认证 WSS 信令 |
+| UDP 47998 | 使用者电脑/门店出口 | WebRTC 视频 |
+
+8080、8081、8765、49100 不需要开放公网。用户电脑网络必须允许访问视频 UDP。公网 IPv4 必须支持入站访问，不能仅是共享 NAT 出口地址。出站需能访问腾讯软件源、Docker/NVIDIA 仓库、`nvcr.io`、`public.ecr.aws`、npm、PyPI、GitHub/raw.githubusercontent.com 和 Let's Encrypt；若受公司网络限制，由运维配置允许的代理或镜像源。
+
+## 3. 在服务器执行部署
+
+先阅读 [Isaac Sim 容器及许可说明](https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/install_container.html)。确认后，把下面 `公网IPv4` 换成这台服务器的真实入站地址：
+
+```bash
+sudo python3 deploy/cloud/install_host.py --public-ip 公网IPv4 --accept-eula --install-driver
+```
+
+脚本会：
+
+1. 核对 TencentOS 4、x86_64、挂载点和两块盘的空闲空间。
+2. 如果驱动尚未安装，从 TencentOS EPOL 源安装 **580 系列驱动**，不安装整个 CUDA Toolkit。已有驱动只检查，不自动替换。580 分支是程序预检下限；最终以真实 Kit/RTX/NVENC 运行结果为准。若驱动未能加载，检查 DKMS 日志并按提示手动重启，之后重新执行相同命令。
+3. 安装 Docker CE、Compose、Buildx 和 NVIDIA Container Toolkit。Docker 使用腾讯镜像站的 EL9 包，仅为该源固定版本 9，不改变 TencentOS 的全局 `$releasever`。已有其他 Docker 安装不会被自动卸载；Compose/Buildx 缺失时需从原安装来源补齐。
+4. 在**首次启动 Docker 前**设置 `/data/docker` 和 overlay2，保留其他 daemon.json 配置。检测到已有镜像、容器或离线存储时停止，不擅自迁移。
+5. 使用锁定的 Isaac Sim **6.0.1** 构建仿真和网页镜像。SO101、MicroDuck 所需资产按清单下载并校验 SHA256；GitHub 只存源码与校验清单，不复制本机运行数据或下载完整 Isaac 资产库。
+6. 保存公网 IP、生成老师密码、启用 HTTPS/WSS 和 systemd 自启动，等待真实场景与信令就绪。
+
+安装驱动可能需要你重启服务器；程序不会自动重启。公司已安装驱动时可省略 `--install-driver`。Node、Python 运行依赖和 Isaac Sim 在容器中，宿主机无需 Conda、Node/npm、CUDA Toolkit、cuDNN 或桌面环境。
+
+安装过程中终端保持连接。需要离开时先使用公司已有的终端会话管理方式，或者在 `tmux` 会话中执行上述命令。下载/构建失败后可以重跑；首次安装失败时不要删除 `/srv/hetao-isaac`，已有账户和上传数据会保留。
+
+## 4. 从浏览器验收
+
+```bash
+sudo cat /srv/hetao-isaac/state/platform/teacher-password.txt
+sudo cat /srv/hetao-isaac/startup-status.json
+```
+
+打开 `https://公网IPv4/`，老师管理入口为 `/manage`。按页面提示登录并配对体验浏览器。
+
+公网 IP 证书由 Caddy 自动申请和续期，不需要域名。端口 80 应保持可达；短期证书到期、网络阻断或签发失败会影响浏览器访问。**scene-ready 只表示真实仿真与信令就绪，不代表浏览器已收到视频或 HTTPS 证书已验收。**
+
+确认：证书受浏览器信任；收到持续更新的视频；SO101 和 MicroDuck 切关、控制正常；断开再连和服务器重启后可恢复。实物主臂遥操作还需本地连接器与实体设备验证。当前一套模板只有一个仿真实例，多人独立运行、60 FPS 和长时间稳定性需另测。
+
+## 5. 以后更新和启动
+
+```bash
+cd /opt/hetao-isaac/repo
+sudo git pull --ff-only
+cd isaac-web-playground-core
+sudo python3 deploy/cloud/install_host.py --accept-eula
+```
+
+更新复用保存的公网 IP、老师账户、配对与上传数据。先构建新镜像，再停止旧服务切换；下载或构建失败时不主动停止原服务。构建完成后的切换阶段会短暂停机，启动失败需查看日志。本流程不提供自动版本回滚。
+
+公网 IP 改变时重新运行安装命令并传入 `--public-ip 新公网IPv4`，同时更新安全组和浏览器地址。开机只使用保存的 IP 和本地镜像，不访问阿里云或腾讯云元数据，不自动拉取 GitHub/构建/更新地址。建议使用稳定的公网地址。
+
+```bash
+sudo systemctl status hetao-isaac --no-pager
+sudo systemctl restart hetao-isaac
+sudo systemctl stop hetao-isaac
+sudo systemctl start hetao-isaac
+```
+
+停止容器不会停止云主机计费。账户、配置、缓存和上传都在 Git 仓库外，按公司方式备份 `/srv/hetao-isaac`。
+
+## 排查
+
+```bash
+# 只读预检；首次安装尚缺驱动/容器时会如实报告
+sudo python3 deploy/cloud/install_host.py --check --public-ip 公网IPv4
+sudo journalctl -u hetao-isaac -n 100 --no-pager
 sudo python3 deploy/cloud/manage.py status --directory /srv/hetao-isaac
 sudo python3 deploy/cloud/manage.py logs --directory /srv/hetao-isaac
-sudo python3 deploy/cloud/manage.py down --directory /srv/hetao-isaac
+sudo docker system df
+sudo du -h -d 1 /srv/hetao-isaac
 ```
 
-down 仅停止容器并保留数据，**云主机仍计费**。之后在阿里云选择“节省停机”，
-或腾讯云选择“关机不收费”，查询确认实际停机模式。磁盘等保留资源仍收费。
-下一次先在云控制台开机；Docker 开机启动后，未被 down 移除的容器会按 restart 策略恢复。
-如果上次执行了 down，需再次运行 up。执行关机前先结束活动；Kit 重启不恢复关卡物体姿态。
-本轮没有绑定任何云账号、创建云资源或实现厂商开关机 API。确定厂商及实例后再接入。
+若网页可开但视频黑屏，核对 UDP 47998、填写的公网 IP、真实场景状态和容器 NVENC 驱动。若镜像拉取失败，先核对 DNS、出站和日志。不要通过关闭证书检查、清空磁盘、全局 Docker prune 或删除账户来重试。
 
-更换 IP 时，编辑持久目录的 platform.json：
-`host/publicOrigin` 是网页地址；station 的 `streamHost/publicIp` 是浏览器可达的视频地址。
-修改后执行 up 重建容器配置；不要只改网页 URL。该 VPN 模板不包含公网 HTTPS/WSS 代理。
+## 官方依据
 
-## 数据、升级与隔离
-
-- `state/platform`：老师账户、配对凭证、审计。仅 gateway 使用。
-- `state/stations/cloud-1/uploads`：该体验台资产和上传文件，worker 与 sim 共用。
-- `cache`、`logs`：Kit 缓存和日志。缓存与驱动/Isaac Sim 版本有关，不能承诺跨版本直接复用。
-- `worker-key`：gateway 到 worker 的服务凭证，独立文件挂载，不写进镜像。
-- Docker 构建采用文件允许列表，不包含本机 .env、校准配置、运行数据、下载包或私钥。
-- 资产以 sha256 清单更新，只更新清单管理的文件，不清空用户上传目录。
-
-网关设 `ISAAC_PLATFORM_MODE=external` 时不会启动子进程。独立 worker 使用
-`server/station-main.js`，由 `ISAAC_STATION_ID` 选择体验台。每个 station 可配置
-`workerOrigin`、`streamHost`、`publicIp`、`webHost`、`bridgeHost`、`signalHost`。
-网关只转发到管理员配置的 workerOrigin，浏览器不能提交地址切换目标。
-跨机器 worker 通信走受信 VPN，或使用校验证书的 HTTPS。
-
-当前 Compose 模板是单 GPU/单体验台。第二个门店独立运行需要第二套 worker+sim，
-同一主机上配置不同端口，并显式选择 GPU；不同主机可以复用端口。
-不能只往 JSON 加一行就认为第二套容器已经启动。
-GPU 容器按 device_ids 选择宿主机 GPU，在容器内部使用索引 0。
-
-## 无需 GitHub 也能传代码
-
-在本机导出受控源码包（输出文件必须不存在）：
-
-```powershell
-python deploy/cloud/manage.py bundle --output run/cloud-source.tar.gz
-```
-
-通过 SSH/SCP 上传到云主机的新版本目录，再解压运行上述部署命令。
-源码包不包含密钥、机械臂个人配置、运行数据和本机上传资产；仿真资产在镜像构建时校验下载。
-它包含当前工作区源码，包括尚未提交的功能，所以不依赖 GitHub 仓库已经更新。
-正式发布可改为拉取经过验证的 Git 提交或镜像版本；只有明确要求时才推送 GitHub。
-
-## 云端验收
-
-1. 新数据盘首次构建，SO101 和 MicroDuck 所有关卡能加载。
-2. 浏览器真实显示 1080p30，确认编码、码率、丢帧，再试 60 FPS。
-3. 真实主臂控制、断网重连、关卡切换；另一体验台无法被越权控制。
-4. down / up 后账户和绑定保留；缓存与资产不重复下载。
-5. 云平台停机不收费模式确认，重启后 VPN/网页/视频地址仍可达。
-6. 两个独立体验台并发与 8 小时稳定性另行验收。
-
-## 镜像源不可达时
-
-若云主机直连 Docker Hub 超时，可在部署目录的 `.env` 中指定 Docker 官方镜像的 ECR 地址：
-
-```dotenv
-NODE_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim
-PYTHON_IMAGE=public.ecr.aws/docker/library/python:3.12-slim-bookworm
-```
-
-构建参数只改变基础镜像来源，不更改宿主机的全局 Docker 镜像源。
-
-若 GitHub 资产下载失败，可在已准备好资产的电脑导出经过完整校验的缓存：
-
-```powershell
-python scripts/fetch_challenge_assets.py --export-cache run/asset-cache
-```
-
-将这个目录上传到云端，例如 `/srv/hetao-isaac-assets`，在部署 `.env` 中加入
-`ASSET_CACHE_DIR=/srv/hetao-isaac-assets`，然后重新 build/up。构建仅复制清单中
-SHA256 匹配的资产；额外文件不会进入镜像，损坏文件会停止构建。缓存不提交 Git。
-
-若 PyPI 下载很慢，可在部署 `.env` 设置 `PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。ONNX Runtime Linux wheel 按官方 PyPI SHA256 锁定，替换镜像源不会跳过校验。
-
-也可将 requirements-sim.txt 中对应的 Linux CPython 3.12 wheel 放入 `ASSET_CACHE_DIR/wheels/`。存在 wheels 子目录时使用离线安装，仍强制校验清单中的 SHA256；不读取本机其他 Python 安装包。
-
-容器健康检查分别验证网页进程、worker HTTP 服务，以及仿真主循环的真实场景/串流状态。sim 的首次启动预留 10 分钟准备期；healthy 仍不代表浏览器已收到视频，视频验收必须在体验端进行。
-
-GPU 容器显式启用 `ngx` 驱动能力，让 NVIDIA Runtime 挂载宿主机的 `libnvidia-ngx.so`。缺少此能力时，仿真可能运行但 NGX/DLSS 初始化失败，画面出现明显噪点；不要只凭进程存活判断渲染正常。
+- [TencentOS 4 NVIDIA 驱动 RPM 安装](https://cloud.tencent.com/document/product/1397/127038)
+- [腾讯云 Docker 安装](https://cloud.tencent.com/document/product/213/46000)
+- [Docker CE EL9 软件包](https://docs.docker.com/engine/install/centos/)
+- [NVIDIA Container Toolkit RPM 安装](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- [Docker containerd 镜像存储的空间开销](https://docs.docker.com/engine/storage/containerd/)
+- [Isaac Sim 6.0.1 容器](https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/install_container.html)

@@ -1,0 +1,22 @@
+[Unit]
+Description=Hetao Isaac Sim public cloud service
+Wants=network-online.target
+After=network-online.target docker.service cloud-final.service
+Requires=docker.service
+RequiresMountsFor=/data/docker /srv/hetao-isaac
+ConditionPathIsMountPoint=/data
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /opt/hetao-isaac/current/deploy/cloud/host_runtime.py start
+ExecStop=/usr/bin/python3 /opt/hetao-isaac/current/deploy/cloud/host_runtime.py stop
+TimeoutStartSec=1200
+TimeoutStopSec=180
+Restart=on-failure
+RestartSec=60
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

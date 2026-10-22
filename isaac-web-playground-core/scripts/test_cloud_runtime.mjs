@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import {once} from 'node:events'
+import {WebSocket, WebSocketServer} from 'ws'
 import {spawn} from 'node:child_process'
 import {createHash} from 'node:crypto'
 import {createGateway, validateConfig} from '../server/platform/gateway.js'
@@ -196,4 +197,59 @@ test('external gateway restarts with persisted access state and never spawns a s
       } finally { child.kill(); await exited }
     }
   } finally { cleanup(directory) }
+})
+
+
+test('public signaling requires the correct browser station and closes revoked sessions', {timeout:15000}, async () => {
+  const directory=temp(), calls=[], sockets=new Set()
+  const signal=http.createServer()
+  const wsServer=new WebSocketServer({server:signal})
+  wsServer.on('connection',(ws,req)=>{
+    sockets.add(ws); ws.on('close',()=>sockets.delete(ws))
+    calls.push({url:req.url,cookie:req.headers.cookie,authorization:req.headers.authorization})
+    ws.on('message',data=>ws.send(data))
+  })
+  signal.listen(0,'127.0.0.1'); await once(signal,'listening')
+  const worker=http.createServer((req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({stream:{host:'203.0.113.8',mediaPort:47998,signalPort:49100}}))}).listen(0,'127.0.0.1')
+  await once(worker,'listening')
+  let gateway,connected
+  try {
+    const origin='https://47.103.134.176'
+    const station={...room(),workerOrigin:`http://127.0.0.1:${worker.address().port}`,signalHost:'127.0.0.1',signalPort:signal.address().port}
+    const config={port:0,publicOrigin:origin,secureCookies:true,proxyStreaming:true,stations:[station]}
+    assert.throws(()=>validateConfig({...config,publicOrigin:'http://example.test'}),/HTTPS/)
+    gateway=createGateway({root,directory,config,workerKey:'s'.repeat(43)})
+    gateway.server.listen(0,'127.0.0.1'); await once(gateway.server,'listening')
+    const base=`http://127.0.0.1:${gateway.server.address().port}`
+    const grant=gateway.access.issue('operator',station.id)
+    const device=gateway.access.issue('device',station.id)
+    const endpoint=base.replace('http:','ws:')+'/platform/stream/'+station.id+'/sign_in'
+    const denied=(url,headers)=>new Promise((resolve,reject)=>{
+      const ws=new WebSocket(url,{headers});ws.on('error',()=>{})
+      ws.on('open',()=>{ws.terminate();reject(Error('Unexpected access'))})
+      ws.on('unexpected-response',(_req,res)=>{res.resume();ws.terminate();resolve(res.statusCode)})
+    })
+    assert.equal(await denied(endpoint,{Origin:origin}),401)
+    assert.equal(await denied(endpoint,{Origin:origin,Cookie:`isaac_access=${device.token}`}),403)
+    assert.equal(await denied(endpoint.replace(station.id,'other-station'),{Origin:origin,Cookie:`isaac_access=${grant.token}`}),403)
+    assert.equal(await denied(endpoint,{Origin:'https://attacker.invalid',Cookie:`isaac_access=${grant.token}`}),403)
+    assert.equal(await denied(endpoint.replace('/sign_in','/unknown'),{Origin:origin,Cookie:`isaac_access=${grant.token}`}),403)
+    assert.equal(calls.length,0)
+    const cfg=await(await fetch(base+'/api/config',{headers:{Cookie:`isaac_access=${grant.token}`,Origin:origin}})).json()
+    assert.equal(cfg.stream.signalHost,'47.103.134.176');assert.equal(cfg.stream.signalPort,443)
+    assert.equal(cfg.stream.signalPath,'/platform/stream/cloud-1');assert.equal(cfg.stream.forceWSS,true)
+    assert.equal(cfg.stream.host,'203.0.113.8');assert.equal(cfg.stream.mediaPort,47998)
+    connected=new WebSocket(endpoint+'?session=abc',{headers:{Origin:origin,Cookie:`isaac_access=${grant.token}`}})
+    await once(connected,'open')
+    const received=once(connected,'message');connected.send('signaling-frame')
+    assert.equal(String((await received)[0]),'signaling-frame')
+    assert.deepEqual(calls,[{url:'/sign_in?session=abc',cookie:undefined,authorization:undefined}])
+    const closed=once(connected,'close');gateway.access.revoke(grant.principal.id);await closed
+  } finally {
+    connected?.terminate()
+    if(gateway){gateway.close();await new Promise(resolve=>gateway.server.close(resolve))}
+    for(const ws of sockets)ws.terminate()
+    await new Promise(resolve=>wsServer.close(resolve));await new Promise(resolve=>signal.close(resolve))
+    await new Promise(resolve=>worker.close(resolve));cleanup(directory)
+  }
 })

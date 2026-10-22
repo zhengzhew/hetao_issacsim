@@ -23,9 +23,11 @@
 
 真实仿真需要在服务端安装 Isaac Sim，并准备适合运行它的 NVIDIA GPU。原项目说明指定 Isaac Sim 6.0.1 和 Node.js 20 或更新版本。访问网页的客户端无需安装 Isaac Sim。
 
-## Linux GPU 云端部署
+## 腾讯云 TencentOS 4 部署
 
-使用 [云端部署说明](isaac-web-playground-core/deploy/cloud/README.md)：Docker Compose 分开管理网页网关、体验台服务和 Isaac Sim，运行数据保存在容器外。当前模板为单 GPU、单体验台，门店通过受信私网/VPN 接入。GitHub 只保存源码，密码、运行数据和个人校准配置不进入仓库。
+在服务器从 GitHub 拉取源码后，执行 `isaac-web-playground-core/deploy/cloud/install_host.py`。适配现有 L20、TencentOS Server 4、50 GB 系统盘与 70 GB 数据盘：大镜像存 `/data/docker`，程序与运行数据存系统盘，不要求扩容或更换操作系统。依赖通过 RPM/DNF 安装，公网 IP 显式配置，使用 HTTPS/WSS + WebRTC。
+
+完整的 clone、首次安装、更新和排查命令见 [云端部署说明](isaac-web-playground-core/deploy/cloud/README.md)。已移除 Windows SSH 上传和阿里云专用安装入口；Windows 本机仿真启动方式保持原状。当前为单 GPU、单体验台，新 TencentOS 路径仍需在公司服务器上完成真实 GPU 和浏览器验收。GitHub 不保存密码、运行数据或个人校准配置。
 
 ## 简化演示
 

@@ -10,7 +10,9 @@ import subprocess
 import sys
 import tarfile
 import time
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
+
+urlopen = build_opener(ProxyHandler({})).open
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -67,6 +69,52 @@ def initialize(directory, host, gpu="0", accept_eula=False):
     return config
 
 
+def configure_public(directory, host):
+    address = ipaddress.ip_address(host)
+    if address.version != 4 or not address.is_global:
+        raise ValueError("Use this server's public IPv4 address")
+    config_path = directory / "platform.json"
+    original = config_path.read_text(encoding="utf-8")
+    config = json.loads(original)
+    if not (directory / ".env").is_file():
+        raise ValueError("Initialize the deployment first")
+    backup = directory / "platform.before-public.json"
+    if not backup.exists():
+        with backup.open("x", encoding="utf-8") as handle:
+            handle.write(original)
+        backup.chmod(0o600)
+    config.update(host="127.0.0.1", publicOrigin=f"https://{address}", secureCookies=True, proxyStreaming=True)
+    config["localConnector"] = {"enabled": False}
+    for station in config["stations"]:
+        station.update(streamHost=str(address), publicIp=str(address))
+    for folder in ("edge/data", "edge/config"):
+        (directory / folder).mkdir(parents=True, exist_ok=True, mode=0o700)
+    caddy = ("{\n    default_sni " + str(address) + "\n    servers {\n        protocols h1 h2\n    }\n}\n\n" + str(address) + " {\n"
+             "    tls {\n        issuer acme {\n"
+             "            dir https://acme-v02.api.letsencrypt.org/directory\n"
+             "            profile shortlived\n            disable_tlsalpn_challenge\n        }\n    }\n"
+             "    header X-Content-Type-Options nosniff\n"
+             f"    reverse_proxy 127.0.0.1:{config['port']}\n" + "}\n")
+    (directory / "Caddyfile").write_text(caddy, encoding="utf-8")
+    config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"Public configuration prepared: https://{address}/")
+    print("Requires inbound TCP 80 for ACME; TCP 443 and station UDP media ports for clients.")
+    print("No cloud security-group rules changed. Run up, then verify the real browser connection.")
+    return config
+
+
+def compose_command(directory):
+    command = ["docker", "compose", "--env-file", str(directory / ".env"), "-f", str(HERE / "compose.yaml")]
+    config = json.loads((directory / "platform.json").read_text(encoding="utf-8"))
+    if config.get("proxyStreaming"):
+        if not (directory / "Caddyfile").is_file():
+            raise ValueError("Public HTTPS requires its Caddyfile; run public first")
+        command += ["-f", str(HERE / "compose.public.yaml")]
+    if (directory / "boot-managed").exists():
+        command += ["-f", str(HERE / "compose.boot.yaml")]
+    return command
+
+
 def ready_status(status):
     bridge = status.get("bridge", {}).get("result") or {}
     return bool(status.get("nativeBundleAvailable") and status.get("signaling", {}).get("connected") and
@@ -112,7 +160,7 @@ def bundle(destination):
         files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
     files.extend(ROOT / "configs" / n for n in ("scenes.json", "robots.json", "challenges.json", "challenge-assets.lock.json"))
     files.extend(ROOT / "scripts" / n for n in ("build_native.mjs", "fetch_challenge_assets.py"))
-    files.extend(p for p in HERE.glob("*") if p.is_file() and p.suffix in (".py", ".mjs", ".yaml", ".md") or
+    files.extend(p for p in HERE.glob("*") if p.is_file() and p.suffix in (".py", ".mjs", ".yaml", ".md", ".service") or
                  p.is_file() and p.name.startswith("Dockerfile."))
     files.extend([HERE / "empty-assets/.gitkeep", HERE / "requirements-sim.txt"])
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -132,13 +180,15 @@ def bundle(destination):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["init", "build", "up", "down", "status", "logs", "ready", "doctor", "bundle"])
+    parser.add_argument("action", choices=["init", "build", "up", "down", "status", "logs", "ready", "doctor", "bundle", "public"])
     parser.add_argument("--directory", type=Path, default=HERE / "local")
     parser.add_argument("--stream-host", help="VPN IPv4 assigned to this GPU host")
     parser.add_argument("--gpu", default="0")
+    parser.add_argument("--public-ip", help="Public IPv4 for HTTPS IP certificate and WebRTC media")
     parser.add_argument("--accept-eula", action="store_true", help="Accept NVIDIA Isaac Sim EULA for this deployment")
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--no-build", action="store_true", help="Reuse local images without pulling; for warm starts")
     args = parser.parse_args(argv)
     directory = args.directory.resolve()
     if args.action == "bundle":
@@ -155,6 +205,11 @@ def main(argv=None):
         print(f"Initialized {directory}; browser URL {config['publicOrigin']}")
         print("No VM, firewall or network settings changed. Confirm VPN routing before starting.")
         return 0
+    if args.action == "public":
+        if not args.public_ip:
+            parser.error("public requires --public-ip")
+        configure_public(directory, args.public_ip)
+        return 0
     if args.action == "ready":
         return wait_ready(directory, max(0, args.timeout))
     if not shutil.which("docker"):
@@ -167,10 +222,12 @@ def main(argv=None):
         return 0
     if not (directory / ".env").is_file():
         raise ValueError("Run init first")
-    compose = ["docker", "compose", "--env-file", str(directory / ".env"), "-f", str(HERE / "compose.yaml")]
+    compose = compose_command(directory)
     operations = {"build": ["build"], "up": ["up", "-d", "--build"],
                   "down": ["down", "--timeout", "60"], "status": ["ps", "--all"],
                   "logs": ["logs", "--tail", "100"]}
+    if args.action == "up" and args.no_build:
+        operations["up"] = ["up", "-d", "--no-build", "--pull", "never"]
     subprocess.run(compose + operations[args.action], check=True)
     if args.action == "down":
         print("Containers stopped; persistent data retained. VM billing CONTINUES.")

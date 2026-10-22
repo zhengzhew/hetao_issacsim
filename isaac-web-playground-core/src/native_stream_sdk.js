@@ -25,6 +25,7 @@ export async function connectNativeStream(options = {}) {
     signalingServer: options.signalingServer,
     signalingPort: Number(options.signalingPort || 49100),
     signalingPath: options.signalingPath ?? '',
+    forceWSS: Boolean(options.forceWSS),
     mediaServer: options.mediaServer || options.signalingServer,
     ...(options.mediaPort != null ? { mediaPort: Number(options.mediaPort) } : {}),
     authenticate: false,

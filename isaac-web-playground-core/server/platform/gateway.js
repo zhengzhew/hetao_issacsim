@@ -6,6 +6,7 @@ import path from 'node:path'
 import {WebSocketServer, WebSocket} from 'ws'
 import {AccessStore,AccessError,requestToken,checkOrigin,allowed} from './access.js'
 import {assertLocalConnector,checkLanCredential} from './local-connector.js'
+import {createStreamProxy} from './stream-proxy.js'
 const json=(res,status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(value))}
 async function body(req) {
   let data='',size=0
@@ -34,12 +35,14 @@ export function validateConfig(config) {
   if (config.localConnector?.enabled && (!Array.isArray(config.localConnector.interfaces) || !config.localConnector.interfaces.length || config.localConnector.interfaces.some(name=>typeof name!=='string'||!name.trim()))) throw Error('Local connector requires explicit network interface names')
   if (config.publicOrigin) validateOrigin(config.publicOrigin,'publicOrigin')
   if (config.publicOrigin?.startsWith('https:')&&!config.secureCookies) throw Error('HTTPS requires secureCookies')
+  if (config.proxyStreaming && !config.publicOrigin?.startsWith('https:')) throw Error('Proxied streaming requires an HTTPS publicOrigin')
   return config
 }
 export function createGateway({config,root,directory,store:givenStore,workerKey}) {
   validateConfig(config)
   const access=givenStore||new AccessStore(directory,config.stations)
   const serviceKey=workerKey||access.data.workerKey
+  const streamProxy=createStreamProxy({config,access})
   const live=new Map(),reports=new Map(),readAgent=new http.Agent({keepAlive:true,maxSockets:16}),secureAgent=new https.Agent({keepAlive:true,maxSockets:16})
   const cookie=token=>`isaac_access=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${config.secureCookies?'; Secure':''}`
   const workerUrl=(station,pathname)=>`${workerOrigin(station)}${pathname}`
@@ -131,6 +134,12 @@ export function createGateway({config,root,directory,store:givenStore,workerKey}
       if(!principal.stationId){res.writeHead(302,{Location:'/manage'});return res.end()}
       const station=access.station(principal.stationId)
       if(pathname.startsWith('/api/')&&!allowed(principal,req.method,pathname))throw new AccessError('此角色不能执行这个操作')
+      if(pathname==='/api/config'&&req.method==='GET'&&config.proxyStreaming) {
+        const result=await call(station,'/api/config'),origin=new URL(config.publicOrigin)
+        return json(res,200,{...result,stream:{...result.stream,
+          signalHost:origin.hostname,signalPort:Number(origin.port||443),
+          signalPath:`/platform/stream/${station.id}`,forceWSS:true}})
+      }
       if(pathname==='/api/stream/client-report'&&req.method==='POST') {
         const input=await body(req),report={at:Date.now(),clientId:principal.id,stationId:station.id,surface:String(input.surface||'').slice(0,24),visible:input.visible===true}
         for(const key of ['width','height','frames','time','fps','mbps','dropped','rttMs','jitterMs','decodeMs','presentedFrames','lastPresentedAgeMs'])if(Number.isFinite(input[key])&&input[key]>=0)report[key]=input[key]
@@ -156,6 +165,11 @@ export function createGateway({config,root,directory,store:givenStore,workerKey}
   server.on('upgrade',(req,socket,head)=>{
     try {
       checkOrigin(req,config.publicOrigin)
+      if(new URL(req.url,'http://gateway').pathname.startsWith('/platform/stream/')) {
+        const principal=access.lookup(requestToken(req))
+        checkLanCredential(req,principal,config)
+        return streamProxy.upgrade(req,socket,head,principal)
+      }
       if(new URL(req.url,'http://gateway').pathname!=='/platform/teleop')throw new AccessError('Not found',404)
       const principal=access.lookup(requestToken(req)),station=access.station(principal.stationId)
       checkLanCredential(req,principal,config)
@@ -223,7 +237,7 @@ export function createGateway({config,root,directory,store:givenStore,workerKey}
     ws.on('error',()=>{})
     ws.on('close',()=>{clearInterval(timer);row.latest=null;if(live.get(station.id)===row)live.delete(station.id);release(row.token)})
   }
-  const close=()=>{for(const row of live.values())row.ws.terminate();wss.close();readAgent.destroy();secureAgent.destroy()}
+  const close=()=>{streamProxy.close();for(const row of live.values())row.ws.terminate();wss.close();readAgent.destroy();secureAgent.destroy()}
   server.on('close',close)
   return {server,access,diagnostics,close}
 }

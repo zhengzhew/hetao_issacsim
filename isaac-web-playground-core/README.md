@@ -30,6 +30,8 @@ simulation; everyone else uses a browser.
 
 ## Running it
 
+For TencentOS Server 4 on the company GPU server, follow [the GitHub-to-server deployment guide](deploy/cloud/README.md). It includes authentication, HTTPS, startup and the two-disk layout. The two-process commands below are the legacy trusted-network path.
+
 Two processes. They talk over TCP 8765.
 
 **1. The bridge**, inside Isaac Sim's Python:

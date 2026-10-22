@@ -9,7 +9,7 @@ RUN --mount=from=assets-cache,target=/asset-cache,ro python scripts/fetch_challe
 FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --registry=https://registry.npmjs.org
+RUN npm ci --registry=https://registry.npmjs.org && npm cache clean --force
 COPY src ./src
 COPY scripts/build_native.mjs ./scripts/build_native.mjs
 RUN mkdir web && node scripts/build_native.mjs && npm prune --omit=dev

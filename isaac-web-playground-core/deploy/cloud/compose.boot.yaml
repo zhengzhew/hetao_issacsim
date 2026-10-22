@@ -1,0 +1,10 @@
+# systemd owns boot order and validates the saved public address before startup.
+services:
+  gateway:
+    restart: "on-failure:5"
+  worker:
+    restart: "on-failure:5"
+  sim:
+    restart: "on-failure:5"
+  edge:
+    restart: "on-failure:5"

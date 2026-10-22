@@ -1467,7 +1467,7 @@ async function connectNativeSurface() {
     if(!current())return
     sdkValue.textContent='@nvidia/ov-web-rtc 6.6.0';video.hidden=false;mockCanvas.hidden=true;mockLegend.hidden=true
     await state.nativeModule.connectNativeStream({
-      videoElementId:'remote-video',audioElementId:'remote-audio',signalingServer:state.cfg.stream.host,signalingPort:state.cfg.stream.signalPort,signalingPath:state.cfg.stream.signalPath||'',mediaServer:state.cfg.stream.host,mediaPort:state.cfg.stream.mediaPort,width:state.cfg.stream.width,height:state.cfg.stream.height,fps:state.cfg.stream.fps,
+      videoElementId:'remote-video',audioElementId:'remote-audio',signalingServer:state.cfg.stream.signalHost||state.cfg.stream.host,forceWSS:state.cfg.stream.forceWSS===true,signalingPort:state.cfg.stream.signalPort,signalingPath:state.cfg.stream.signalPath||'',mediaServer:state.cfg.stream.host,mediaPort:state.cfg.stream.mediaPort,width:state.cfg.stream.width,height:state.cfg.stream.height,fps:state.cfg.stream.fps,
       callbacks:{
         onLifecycle:(evt)=>{const detail=lifecycleDetail(evt);if(evt.phase!=='update'||['error','warning','success'].includes(evt.status))logEvent('rtc',detail)},
         onLive:()=>{

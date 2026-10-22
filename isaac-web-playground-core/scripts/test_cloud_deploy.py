@@ -42,6 +42,28 @@ class CloudTests(unittest.TestCase):
                 manage.initialize(target, "10.8.0.2")
             self.assertEqual(key, (target / "worker-key").read_text())
 
+    def test_public_ip_keeps_credentials_and_uses_automatic_https_with_private_workers(self):
+        with tempfile.TemporaryDirectory(prefix="isaac-cloud-test-") as folder:
+            target = Path(folder) / "deployment"
+            old = manage.initialize(target, "10.8.0.1")
+            key = (target / "worker-key").read_bytes()
+            config = manage.configure_public(target, "47.103.134.176")
+            self.assertEqual(config["host"], "127.0.0.1")
+            self.assertEqual(config["publicOrigin"], "https://47.103.134.176")
+            self.assertTrue(config["secureCookies"])
+            self.assertTrue(config["proxyStreaming"])
+            self.assertFalse(config["localConnector"]["enabled"])
+            self.assertEqual(config["stations"][0]["workerOrigin"], old["stations"][0]["workerOrigin"])
+            self.assertEqual(config["stations"][0]["publicIp"], "47.103.134.176")
+            self.assertEqual((target / "worker-key").read_bytes(), key)
+            self.assertEqual(json.loads((target / "platform.before-public.json").read_text(encoding="utf-8")), old)
+            self.assertIn("profile shortlived", (target / "Caddyfile").read_text())
+            self.assertIn("disable_tlsalpn_challenge", (target / "Caddyfile").read_text())
+            self.assertTrue(manage.compose_command(target)[-1].endswith("compose.public.yaml"))
+            for host in ("127.0.0.1", "10.8.0.1", "example.com", "::1"):
+                with self.assertRaises(ValueError):
+                    manage.configure_public(target, host)
+
     def test_private_pilot_rejects_public_or_nonroutable_bind_addresses(self):
         for host in ("0.0.0.0", "127.0.0.1", "8.8.8.8", "example.com", "::1", "169.254.0.1"):
             with self.assertRaises(ValueError):
