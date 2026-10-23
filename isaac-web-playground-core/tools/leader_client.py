@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import select
 from pathlib import Path
 import threading
 import time
@@ -47,6 +48,7 @@ class LatestPoseSender:
     def __init__(self,sampler,ws,calibration,connected_at):
         self.sampler=sampler;self.ws=ws;self.calibration=calibration;self.connected_at=connected_at
         self.lock=threading.Lock();self.limits=None;self.launch=None;self.offset=None
+        self.io_lock=threading.Lock()
         self.stop_event=threading.Event();self.error=None
         self.thread=threading.Thread(target=self.run,daemon=True)
     def start(self):self.thread.start()
@@ -65,7 +67,8 @@ class LatestPoseSender:
                 # Never replay a pose captured before this connection or after a
                 # long blocked write. The sampler keeps only the latest pose.
                 if limits is None or offset is None or sample['monotonic']<self.connected_at or time.monotonic()-sample['monotonic']>=.15:continue
-                self.ws.send(json.dumps({'type':'sample','seq':sequence,'capturedAt':sample['capturedAt']+offset,'launchId':launch,'positions':self.calibration.targets(sample['raw'],limits)}))
+                message=json.dumps({'type':'sample','seq':sequence,'capturedAt':sample['capturedAt']+offset,'launchId':launch,'positions':self.calibration.targets(sample['raw'],limits)})
+                with self.io_lock:self.ws.send(message)
         except Exception as error:self.error=error;self.stop_event.set()
     def stop(self):
         self.stop_event.set();self.thread.join(timeout=5)
@@ -182,7 +185,13 @@ def main():
                     if sampler.error:raise sampler.error
                     if sender.error:raise sender.error
                     try:
-                        raw=ws.recv()
+                        # Serialize TLS socket operations with the sender, but
+                        # only receive when data is ready. An empty receive must
+                        # not hold the send lock for the socket timeout.
+                        with sender.io_lock:
+                            if not (getattr(ws.sock,'pending',lambda:0)() or select.select([ws.sock],[],[],0)[0]):
+                                raise websocket.WebSocketTimeoutException()
+                            raw=ws.recv()
                         if not raw:raise ConnectionError('服务器已断开')
                         message=json.loads(raw);last_reply=time.monotonic()
                         if message['type']=='clock':
@@ -197,10 +206,11 @@ def main():
                             if message['type']=='waiting':sender.set_scene(None)
                             log(message['type'],reason=message.get('message'))
                             if message.get('fatal'):raise RuntimeError(message.get('message','设备配置无效'))
-                    except websocket.WebSocketTimeoutException:pass
+                    except websocket.WebSocketTimeoutException:time.sleep(.001)
                     if time.monotonic()-last_reply>8:raise ConnectionError('服务器响应中断')
                     if time.monotonic()-start_mono>30:
-                        start_wall=time.time()*1000;start_mono=time.monotonic();ws.send(json.dumps({'type':'clock','echo':start_wall}))
+                        start_wall=time.time()*1000;start_mono=time.monotonic()
+                        with sender.io_lock:ws.send(json.dumps({'type':'clock','echo':start_wall}))
             except (OSError,ConnectionError,websocket.WebSocketException) as error:
                 # End the old sender before backoff/reconnect so two connections
                 # can never send poses at the same time.

@@ -50,6 +50,21 @@ from types import SimpleNamespace
 from unittest.mock import patch
 sys.path.insert(0,sys.argv.pop(1))
 import leader_client
+real_connect=leader_client.websocket.create_connection
+class SerializedSocket:
+    # Detect overlapping socket operations, including a blocking receive while
+    # the pose sender writes. This also guards the HTTPS/WSS execution path.
+    def __init__(self,ws):self.ws=ws;self.io=threading.Lock()
+    def __getattr__(self,name):return getattr(self.ws,name)
+    def send(self,message):
+        if not self.io.acquire(blocking=False):raise RuntimeError('overlapping socket send/receive')
+        try:return self.ws.send(message)
+        finally:self.io.release()
+    def recv(self):
+        if not self.io.acquire(blocking=False):raise RuntimeError('overlapping socket send/receive')
+        try:time.sleep(.002);return self.ws.recv()
+        finally:self.io.release()
+def connect(*args,**kwargs):return SerializedSocket(real_connect(*args,**kwargs))
 class Reader:
     port=SimpleNamespace(baudrate=1000000)
     def open(self):pass
@@ -58,7 +73,7 @@ class Reader:
 stop=Path(sys.argv[sys.argv.index('--stop-file')+1])
 timer=threading.Timer(3.2,stop.touch);timer.start()
 try:
-    with patch.object(leader_client,'make_reader',return_value=Reader()):leader_client.main()
+    with patch.object(leader_client,'make_reader',return_value=Reader()), patch.object(leader_client.websocket,'create_connection',side_effect=connect):leader_client.main()
 finally:timer.cancel()
 `
     const {stdout}=await promisify(execFile)(python,['-B','-c',script,path.join(root,'tools'),'--port','TEST','--server',server,'--arm-id','rate-test-arm','--driver','feetech-so101','--calibration',path.join(root,'scripts/fixtures/leader_arm_isaac_calibration.json'),'--state-dir',state,'--stop-file',stop],{timeout:10000,env:{...process.env,PYTHONIOENCODING:'utf-8'}})
