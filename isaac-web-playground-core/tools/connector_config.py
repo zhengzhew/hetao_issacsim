@@ -120,12 +120,11 @@ class ConnectorConfig:
     def __init__(self,root,directory=None,downloads=None):
         self.root=Path(root);self.directory=Path(directory) if directory is not None else state_directory()
         self.file=self.directory/'simple-connector.json'
-        self.data={};self.notice='';packaged_mode=None;self.hardware_driver=None
+        self.data={};self.notice='';self.hardware_driver=None
         packaged=self.root/'connector.json'
         if packaged.exists():
             try:
                 self.data=json.loads(packaged.read_text(encoding='utf-8-sig'))
-                packaged_mode=self.data.get('connectionMode')
                 self.hardware_driver=self.data.get('hardwareDriver')
             except (ValueError,OSError):self.notice='默认配置无法读取，请选择校准文件'
         if self.file.exists():
@@ -134,13 +133,8 @@ class ConnectorConfig:
         if self.hardware_driver not in (None,'desheng-se-v401','feetech-so101'):
             raise ValueError('连接工具的 hardwareDriver 配置无效')
         self.data.setdefault('server','http://localhost:8080')
-        self.data.setdefault('autoConnect',True)
-        if packaged_mode=='pair-code':
-            # A paired release must not inherit legacy LAN enrollment from another build.
-            self.data.update({'connectionMode':'pair-code','autoConnect':False})
-        elif packaged_mode=='lan':
-            # Explicit LAN packages use the server's enrollment policy, even after a paired build.
-            self.data.update({'connectionMode':'lan','autoConnect':True})
+        # V6 GUI always pairs, including upgrades with old LAN package/user settings.
+        self.data.update({'connectionMode':'pair-code','autoConnect':False})
         self.data.setdefault('profiles',{})
         if not isinstance(self.data['profiles'],dict):raise ValueError('保存的机械臂配置列表无法读取')
         if self.hardware_driver:

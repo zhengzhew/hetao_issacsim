@@ -69,6 +69,37 @@ class AccessTests(unittest.TestCase):
         self.args.pair_code=''
         self.assertEqual(authorize(self.args,'client-test','cfg-test',paired,self.emit)[0],'paired-token')
         self.assertEqual(self.calls,['/platform/pair','/platform/me','/platform/me'])
+    def test_paired_upgrade_does_not_reuse_peer_bound_lan_grant(self):
+        authorize(self.args,'client-test','cfg-test',self.call,self.emit)
+        self.args.auto_connect=False;self.calls.clear();self.events.clear()
+        with self.assertRaisesRegex(RuntimeError,'首次配对'):
+            authorize(self.args,'client-test','cfg-test',self.call,self.emit)
+        self.assertEqual(self.calls,[])
+        self.assertEqual(self.events[0]['event'],'pairing-required')
+        self.args.pair_code='FRESH-COLLECTOR-CODE'
+        principal={'role':'device','stationId':'room1','expires':9999999999999}
+        def paired(server,path,data=None,token=None):
+            self.calls.append(path)
+            if path=='/platform/pair':return {'token':'paired-token','principal':principal}
+            if path=='/platform/me':return {'principal':principal}
+            raise AssertionError(path)
+        self.assertEqual(authorize(self.args,'client-test','cfg-test',paired,self.emit)[0],'paired-token')
+        self.assertEqual(self.calls,['/platform/pair','/platform/me'])
+    def test_expired_paired_grant_requests_code_without_lan_fallback(self):
+        self.args.auto_connect=False;self.args.pair_code='TEST-CODE'
+        principal={'role':'device','stationId':'room1','expires':9999999999999}
+        def paired(server,path,data=None,token=None):
+            if path=='/platform/pair':return {'token':'paired-token','principal':principal}
+            return {'principal':principal}
+        authorize(self.args,'client-test','cfg-test',paired,self.emit)
+        self.args.pair_code='';self.events.clear()
+        def expired(server,path,data=None,token=None):
+            self.calls.append(path)
+            raise HTTPError(server,401,'Expired',{},io.BytesIO(b'{}'))
+        with self.assertRaisesRegex(RuntimeError,'配对已过期'):
+            authorize(self.args,'client-test','cfg-test',expired,self.emit)
+        self.assertEqual(self.calls,['/platform/me'])
+        self.assertEqual(self.events[0]['event'],'pairing-required')
     def test_explicit_pair_code_remains_compatible_and_cannot_give_a_browser_role(self):
         self.args.pair_code='ONE-TIME'
         def wrong_role(server,path,data=None,token=None):

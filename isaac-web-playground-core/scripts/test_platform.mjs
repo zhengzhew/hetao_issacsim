@@ -29,6 +29,29 @@ test('station port collisions rejected',()=>{
   const first=station('room1',22001),second=station('room2',22001)
   assert.throws(()=>validateConfig({port:8080,stations:[first,second]}),/duplicate port/)
 })
+
+test('collector pairing works through a forwarded HTTPS entry without LAN enrollment',async()=>{
+  const directory=temporary();let gateway
+  try{
+    gateway=createGateway({root,directory,config:{port:0,publicOrigin:'https://sim.example.test',secureCookies:true,stations:[station('room1',22001)]}})
+    gateway.server.listen(0,'127.0.0.1');await once(gateway.server,'listening')
+    const base=`http://127.0.0.1:${gateway.server.address().port}`
+    const code=gateway.access.pairCode('room1','device')
+    const forwarded={'X-Forwarded-For':'198.51.100.23','X-Forwarded-Proto':'https'}
+    const response=await fetch(base+'/platform/pair',{method:'POST',
+      headers:{...forwarded,'Content-Type':'application/json'},
+      body:JSON.stringify({code,clientId:'paired-collector',label:'test arm'})})
+    assert.equal(response.status,200)
+    const paired=await response.json()
+    assert.equal(paired.principal.role,'device');assert.equal(paired.principal.stationId,'room1')
+    assert.notEqual(paired.principal.accessMode,'lan')
+    const me=await fetch(base+'/platform/me',{headers:{...forwarded,Authorization:'Bearer '+paired.token}})
+    assert.equal(me.status,200)
+    assert.equal((await me.json()).principal.role,'device')
+    const repeated=await fetch(base+'/platform/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code,clientId:'paired-collector'})})
+    assert.equal(repeated.status,401)
+  }finally{if(gateway){gateway.close();await new Promise(r=>gateway.server.close(r))}cleanup(directory)}
+})
 test('gateway isolates stations, protects management and expires/revokes credentials',async()=>{
   const directory=temporary(),workers=[],calls=[];let gateway
   try{

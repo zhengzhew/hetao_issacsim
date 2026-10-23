@@ -35,11 +35,11 @@ class ConnectorWindow:
         self.enumerate_ports=enumerate_ports;self.spawn=spawn;self.process=None;self.closing=False
         self.offset=0;self.partial='';self.failure='';self.available=[];self.manual_port=None
         self.settings_open=False;self.log_open=False;self.log_path=None;self.stop_path=None
-        root.title('SO-101 一键连接 V5 · 飞特兼容');root.geometry('720x700');root.minsize(640,630)
+        root.title('SO-101 连接工具 V6 · 配对码连接');root.geometry('720x700');root.minsize(640,630)
         style=ttk.Style(root);style.configure('TButton',padding=(14,9));style.configure('TLabel',font=('Microsoft YaHei UI',10));style.configure('Connect.TButton',font=('Microsoft YaHei UI',13,'bold'),padding=16)
         self.frame=ttk.Frame(root,padding=22);self.frame.pack(fill='both',expand=True)
         ttk.Label(self.frame,text='填写服务器地址，连接机械臂',font=('Microsoft YaHei UI',17,'bold')).pack(anchor='w')
-        ttk.Label(self.frame,text='先填写服务器地址，再选择这台机械臂的配置。').pack(anchor='w',pady=(8,18))
+        ttk.Label(self.frame,text='填写服务器地址和采集器配对码，再选择这台机械臂的配置。').pack(anchor='w',pady=(8,18))
         self.server=tk.StringVar(value=self.store.data['server']);self.calibration=tk.StringVar(value=self.store.data.get('calibration',''))
         self.selection=tk.StringVar();self.pair_code=tk.StringVar();self.station_id=tk.StringVar(value=self.store.data.get('stationId',''));self.station_selection=tk.StringVar();self.station_choices=self.store.data.get('stations',[]);self.status=tk.StringVar(value=self.store.notice or '准备连接')
         self.port_text=tk.StringVar();self.file_text=tk.StringVar();self.summary=tk.StringVar()
@@ -51,9 +51,10 @@ class ConnectorWindow:
         self.server_box.bind('<Return>',lambda event:self.save_server())
         ttk.Label(server_card,text='填写实际服务器地址（含 http:// 或 https:// 和端口），保存后下次自动恢复。',wraplength=620).pack(anchor='w',pady=(6,0))
         self.pair_row=ttk.Frame(server_card)
-        ttk.Label(self.pair_row,text='采集器配对码（教师端生成；首次连接或凭证过期时填写）',wraplength=620).pack(anchor='w')
+        ttk.Label(self.pair_row,text='采集器配对码（教师端生成，不是浏览器配对码）',wraplength=620).pack(anchor='w')
         self.pair_box=ttk.Entry(self.pair_row,textvariable=self.pair_code);self.pair_box.pack(fill='x',pady=4)
-        if not self.store.data.get('autoConnect',False):self.pair_row.pack(fill='x',pady=(10,0))
+        ttk.Label(self.pair_row,text='首次连接或凭证过期时填写；有效配对会自动记住。',wraplength=620).pack(anchor='w')
+        self.pair_row.pack(fill='x',pady=(10,0))
         card=ttk.LabelFrame(self.frame,text='当前机械臂配置',padding=12);card.pack(fill='x')
         file_row=ttk.Frame(card);file_row.pack(fill='x')
         self.profile_box=ttk.Combobox(file_row,textvariable=self.profile_selection,state='readonly');self.profile_box.pack(side='left',fill='x',expand=True);self.profile_box.bind('<<ComboboxSelected>>',self.select_saved_profile)
@@ -202,7 +203,6 @@ class ConnectorWindow:
             command=[sys.executable]
             if not getattr(sys,'frozen',False):command.append(str(Path(__file__).resolve()))
             command+=['--worker',str(self.log_path),'--port',self.manual_port['port'],'--server',saved['server'],'--calibration',saved['calibration'],'--arm-id',saved['armId'],'--driver',saved['driver'],'--state-dir',str(self.store.directory),'--stop-file',str(self.stop_path)]
-            if saved.get('autoConnect'):command+=['--auto-connect']
             if self.station_id.get():command+=['--station-id',self.station_id.get()]
             if self.pair_code.get().strip():command+=['--pair-code',self.pair_code.get().strip()]
             self.process=self.spawn(command,cwd=ROOT,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
@@ -236,7 +236,7 @@ class ConnectorWindow:
         elif kind=='reconnecting':self.status.set('连接中断，正在自动重连…')
         elif kind=='failed':self.failure=event.get('message','连接失败');self.status.set(self.failure)
         elif kind=='pairing-required':
-            self.failure=event.get('message','服务器需要配对码');self.status.set(self.failure);self.pair_row.pack(fill='x',pady=(10,0));self.fit_window()
+            self.failure=event.get('message','服务器需要配对码');self.status.set(self.failure);self.pair_box.focus_set();self.fit_window()
         if kind!='following':self.append(json.dumps(event,ensure_ascii=False))
 
     def poll(self):
@@ -279,7 +279,7 @@ def gui(smoke_path=None):
         from connector_tls import ssl_context
         context=ssl_context('https://10.72.255.16')
         assert context.check_hostname and context.verify_mode==ssl.CERT_REQUIRED
-        root.update_idletasks();Path(smoke_path).write_text(json.dumps({'title':root.title(),'server':window.server.get(),'calibration':window.calibration.get(),'port':window.manual_port,'settingsOpen':window.settings_open,'profileName':window.store.data.get('calibrationName'),'profiles':window.profile_box['values'],'activeProfile':window.store.data.get('activeProfile'),'autoConnect':window.store.data.get('autoConnect',False),'driver':window.store.data.get('driver'),'bundledCaLoaded':True},ensure_ascii=False),encoding='utf-8');window.close();return
+        root.update_idletasks();Path(smoke_path).write_text(json.dumps({'title':root.title(),'server':window.server.get(),'calibration':window.calibration.get(),'port':window.manual_port,'settingsOpen':window.settings_open,'profileName':window.store.data.get('calibrationName'),'profiles':window.profile_box['values'],'activeProfile':window.store.data.get('activeProfile'),'autoConnect':window.store.data.get('autoConnect',False),'driver':window.store.data.get('driver'),'pairCodeOnMainWindow':window.pair_row.winfo_manager()=='pack' and window.pair_row.master is not window.details,'bundledCaLoaded':True},ensure_ascii=False),encoding='utf-8');window.close();return
     root.mainloop()
 
 if __name__=='__main__':

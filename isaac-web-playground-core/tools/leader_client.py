@@ -79,6 +79,10 @@ def authorize(args,client_id,label,call=request,emit=log):
             raise RuntimeError('请选择要连接的体验台，然后再次点击连接')
         saved=result
         atomic_json(file,saved)
+    # LAN grants carry peer/network restrictions; V6 must obtain a paired grant instead.
+    if not args.auto_connect and saved.get('principal',{}).get('accessMode')=='lan':
+        emit('pairing-required',message='请在主界面输入采集器配对码，完成新版首次配对；机械臂配置已保留')
+        raise RuntimeError('请填写采集器配对码，完成新版首次配对')
     token=saved.get('token')
     if not token:
         emit('pairing-required',message='请在主界面输入教师端生成的采集器配对码；其他配置已经记住')
@@ -86,7 +90,7 @@ def authorize(args,client_id,label,call=request,emit=log):
     try:principal=call(args.server,'/platform/me',token=token)['principal']
     except HTTPError as error:
         if error.code in (401,403):
-            emit('pairing-required',message='配对已过期，请在下方输入新采集器配对码；其他配置不用重填')
+            emit('pairing-required',message='配对已过期，请在主界面输入新采集器配对码；其他配置不用重填')
             raise RuntimeError('配对已过期，请输入新采集器配对码') from None
         raise
     if principal['role']!='device':
