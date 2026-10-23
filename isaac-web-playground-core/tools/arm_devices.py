@@ -7,10 +7,20 @@ from desheng_calibration import RangeCalibration
 
 DRIVERS = {
     'desheng-se-v401': {'name':'德晟 SE（已验证兼容读取协议）', 'verified':True, 'max_rate':30},
-    'feetech-so101': {'name':'Feetech SO-101（待本项目硬件验证）', 'verified':False},
+    'feetech-so101': {'name':'飞特 STS3215 · 1000000 波特率', 'verified':True, 'max_rate':30},
     'desheng-v5': {'name':'德晟其他版本／V5（待协议验证）', 'verified':False},
     'unknown': {'name':'其他／未知版本（请先确认协议）', 'verified':False},
 }
+
+
+def make_reader(driver, port):
+    if driver == 'feetech-so101':
+        from feetech_leader import FeetechReader
+        return FeetechReader(port)
+    if driver == 'desheng-se-v401':
+        from desheng_leader import DeshengReader
+        return DeshengReader(port)
+    raise ValueError('不支持的机械臂驱动：' + str(driver))
 
 def client_identity(directory):
     directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)

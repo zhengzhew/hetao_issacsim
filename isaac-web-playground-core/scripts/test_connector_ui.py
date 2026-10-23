@@ -40,9 +40,30 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(self.window.status.get(),'服务器未启动')
     def test_pairing_error_reveals_existing_pairing_field(self):
         self.window.consume_event({'event':'pairing-required','message':'请更新配对码'})
-        self.assertTrue(self.window.settings_open)
-        self.assertEqual(self.window.pair_row.winfo_manager(),'grid')
+        self.assertFalse(self.window.settings_open)
+        self.assertEqual(self.window.pair_row.winfo_manager(),'pack')
         self.assertEqual(self.window.status.get(),'请更新配对码')
+    def test_upgrade_from_lan_shows_pair_code_and_worker_uses_it(self):
+        self.window.close()
+        (self.base/'connector.json').write_text(json.dumps({'connectionMode':'pair-code','autoConnect':False,'hardwareDriver':'feetech-so101'}))
+        self.config=ConnectorConfig(self.base,self.base/'user')
+        self.root=tk.Tk();self.root.withdraw()
+        def spawn(command,**kwargs):self.calls.append(command);return self.child
+        self.window=ConnectorWindow(self.root,self.config,lambda:[{**USB,'port':'COM20'}],spawn)
+        self.root.update_idletasks()
+        self.assertFalse(self.window.settings_open)
+        self.assertEqual(self.window.pair_row.winfo_manager(),'pack')
+        self.assertIsNot(self.window.pair_row.master,self.window.details)
+        self.assertGreaterEqual(self.root.minsize()[1],self.window.frame.winfo_reqheight())
+        self.window.pair_box.insert(0,'TEST-COLLECTOR-CODE')
+        self.window.connect_button.invoke()
+        command=self.calls[0]
+        self.assertNotIn('--auto-connect',command)
+        self.assertEqual(command[command.index('--driver')+1],'feetech-so101')
+        self.assertIn('飞特 STS3215',self.window.summary.get())
+        self.assertEqual(command[command.index('--pair-code')+1],'TEST-COLLECTOR-CODE')
+        self.assertEqual(self.window.pair_code.get(),'')
+        self.assertNotIn('TEST-COLLECTOR-CODE',self.config.file.read_text(encoding='utf-8'))
     def test_selected_station_is_saved_and_used_in_next_connection(self):
         choices=[{'id':'one','name':'一号'},{'id':'two','name':'二号'}]
         self.window.consume_event({'event':'station-required','stations':choices,'message':'请选择体验台'})

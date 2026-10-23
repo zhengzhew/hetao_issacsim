@@ -51,7 +51,7 @@ def profile_key(sha, serial=''):
     return sha + ('-'+hashlib.sha256(serial.encode('utf-8')).hexdigest()[:16] if serial else '')
 
 
-def calibration_profile(file):
+def calibration_profile(file,driver='desheng-se-v401'):
     source = Path(file).resolve()
     document = read_config_json(source)
     calibration = source
@@ -91,8 +91,9 @@ def calibration_profile(file):
     sha = hashlib.sha256(calibration.read_bytes()).hexdigest()
     key = profile_key(sha, serial)
     identity = hashlib.sha256(key.encode('utf-8')).hexdigest() if serial else sha
-    # The user has confirmed SE leader servos; JSON shape and USB are not protocol probes.
-    return {'driver':'desheng-se-v401','armId':'cfg-'+identity[:24],
+    # Driver choice is explicit: calibration JSON and USB IDs do not identify a protocol.
+    if driver not in ('desheng-se-v401','feetech-so101'):raise ValueError('不支持的机械臂驱动：'+str(driver))
+    return {'driver':driver,'armId':'cfg-'+identity[:24],
             'calibrationHash':sha,'calibration':str(calibration),
             'sourceCalibration':str(source),'calibrationName':name,
             'expectedLeaderSerial':serial,'profileKey':key}
@@ -119,18 +120,34 @@ class ConnectorConfig:
     def __init__(self,root,directory=None,downloads=None):
         self.root=Path(root);self.directory=Path(directory) if directory is not None else state_directory()
         self.file=self.directory/'simple-connector.json'
-        self.data={};self.notice=''
+        self.data={};self.notice='';packaged_mode=None;self.hardware_driver=None
         packaged=self.root/'connector.json'
         if packaged.exists():
-            try:self.data=json.loads(packaged.read_text(encoding='utf-8-sig'))
+            try:
+                self.data=json.loads(packaged.read_text(encoding='utf-8-sig'))
+                packaged_mode=self.data.get('connectionMode')
+                self.hardware_driver=self.data.get('hardwareDriver')
             except (ValueError,OSError):self.notice='默认配置无法读取，请选择校准文件'
         if self.file.exists():
             try:self.data.update(json.loads(self.file.read_text(encoding='utf-8')))
             except (ValueError,OSError):raise ValueError('上次连接记录无法读取：'+str(self.file)) from None
+        if self.hardware_driver not in (None,'desheng-se-v401','feetech-so101'):
+            raise ValueError('连接工具的 hardwareDriver 配置无效')
         self.data.setdefault('server','http://localhost:8080')
         self.data.setdefault('autoConnect',True)
+        if packaged_mode=='pair-code':
+            # A paired release must not inherit legacy LAN enrollment from another build.
+            self.data.update({'connectionMode':'pair-code','autoConnect':False})
+        elif packaged_mode=='lan':
+            # Explicit LAN packages use the server's enrollment policy, even after a paired build.
+            self.data.update({'connectionMode':'lan','autoConnect':True})
         self.data.setdefault('profiles',{})
         if not isinstance(self.data['profiles'],dict):raise ValueError('保存的机械臂配置列表无法读取')
+        if self.hardware_driver:
+            # A hardware-specific release must not inherit the old release's protocol.
+            # Keep arm identity, calibration and USB binding for server-side review.
+            self.data['driver']=self.hardware_driver
+            self.data['hardwareDriver']=self.hardware_driver
         selected=self.data.get('activeProfile') or self.data.get('calibrationHash')
         if selected in self.data['profiles']:
             try:
@@ -147,7 +164,7 @@ class ConnectorConfig:
                 candidate=self.data.get(key)
                 if not candidate:continue
                 try:
-                    profile=calibration_profile(candidate)
+                    profile=calibration_profile(candidate,self.hardware_driver or self.data.get('driver','desheng-se-v401'))
                     if selected and profile['calibrationHash']!=selected:continue
                     record={**profile,'sourceCalibration':self.data.get('sourceCalibration') or candidate,
                             'calibrationName':self.data.get('calibrationName') or Path(self.data.get('sourceCalibration') or candidate).name,
@@ -177,9 +194,10 @@ class ConnectorConfig:
             file=record.get(key)
             if not file:continue
             try:
-                profile=calibration_profile(file)
+                profile=calibration_profile(file,self.hardware_driver or record.get('driver','desheng-se-v401'))
                 if profile['calibrationHash']!=record['calibrationHash']:continue
                 return {**profile,**record,'calibration':self._cache(profile['calibration'],profile['calibrationHash']),
+                        'driver':profile['driver'],
                         'sourceCalibration':record.get('sourceCalibration',file),
                         'calibrationName':record.get('calibrationName') or Path(record.get('sourceCalibration') or file).name,
                         'portIdentity':record.get('portIdentity',{})}
@@ -189,6 +207,14 @@ class ConnectorConfig:
     def profiles(self):
         return list(self.data['profiles'].values())
 
+    def remember_server(self,server):
+        server=normalize_server(server)
+        data={**self.data,'server':server}
+        if server!=self.data.get('server'):
+            data.update({'stationId':'','stations':[]})
+        atomic_json(self.file,data);self.data=data
+        return dict(data)
+
     def save(self,server,calibration,port=None):
         server=normalize_server(server);profile=calibration_profile(calibration)
         sha=profile['calibrationHash'];key=profile['profileKey']
@@ -197,6 +223,7 @@ class ConnectorConfig:
         active=self.data['profiles'].get(self.data.get('activeProfile'),{})
         using_cache=bool(active and Path(calibration).resolve()==Path(active['calibration']).resolve())
         previous=active if using_cache else self.data['profiles'].get(key,{})
+        profile['driver']=self.hardware_driver or previous.get('driver',profile['driver'])
         if using_cache:
             for field in ('sourceCalibration','calibrationName','expectedLeaderSerial','profileKey','armId'):
                 profile[field]=previous.get(field,profile[field])
@@ -227,10 +254,11 @@ class ConnectorConfig:
 
 def friendly_error(error):
     text=str(error)
+    if 'CERTIFICATE_VERIFY_FAILED' in text:return '服务器证书验证失败，请确认服务器地址及对应的根证书是否正确，或联系老师更新连接工具'
     if '401' in text:return '连接凭证已过期，请重新连接或更新连接配置'
     if '409' in text:return '体验台正在被另一台连接工具使用，请先停止原工具'
     if '403' in text:return '服务器未允许这台电脑直接连接，请检查服务器地址'
     if 'PermissionError' in text or 'Access is denied' in text or '拒绝访问' in text:return '串口被占用，请关闭其他机械臂工具后再连接'
-    if '10061' in text or 'Connection refused' in text or '拒绝连接' in text:return '未连接到服务器，请确认服务已启动；地址变化时点“连接设置”修改'
+    if '10061' in text or 'Connection refused' in text or '拒绝连接' in text:return '未连接到服务器，请确认服务已启动，并检查上方服务器地址'
     if 'timed out' in text or '10060' in text:return '服务器没有响应，请检查网络和服务器地址'
     return text

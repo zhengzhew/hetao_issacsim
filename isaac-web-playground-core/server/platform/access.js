@@ -85,7 +85,7 @@ export class AccessStore {
   bindArm(metadata) {
     const {armId,driver,calibrationHash}=metadata
     if (typeof armId!=='string'||!armId.trim()||armId!==armId.trim()||armId.length>80||/[\x00-\x1f]/.test(armId)) throw new AccessError('机械臂编号无效',400)
-    if (driver!=='desheng-se-v401'||! /^[a-f0-9]{64}$/.test(calibrationHash||'')) throw new AccessError('驱动或校准文件指纹无效',400)
+    if (!['desheng-se-v401','feetech-so101'].includes(driver)||! /^[a-f0-9]{64}$/.test(calibrationHash||'')) throw new AccessError('驱动或校准文件指纹无效',400)
     const key=digest(armId),current=this.data.arms[key],profile={armId,driver,calibrationHash}
     if (!current) {
       if (Object.keys(this.data.arms).length>=500) throw new AccessError('机械臂登记数量已达上限',429)

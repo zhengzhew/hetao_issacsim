@@ -35,15 +35,25 @@ class ConnectorWindow:
         self.enumerate_ports=enumerate_ports;self.spawn=spawn;self.process=None;self.closing=False
         self.offset=0;self.partial='';self.failure='';self.available=[];self.manual_port=None
         self.settings_open=False;self.log_open=False;self.log_path=None;self.stop_path=None
-        root.title('SO-101 一键连接');root.geometry('720x530');root.minsize(640,480)
+        root.title('SO-101 一键连接 V5 · 飞特兼容');root.geometry('720x700');root.minsize(640,630)
         style=ttk.Style(root);style.configure('TButton',padding=(14,9));style.configure('TLabel',font=('Microsoft YaHei UI',10));style.configure('Connect.TButton',font=('Microsoft YaHei UI',13,'bold'),padding=16)
         self.frame=ttk.Frame(root,padding=22);self.frame.pack(fill='both',expand=True)
-        ttk.Label(self.frame,text='找到配置文件，就能连接',font=('Microsoft YaHei UI',17,'bold')).pack(anchor='w')
-        ttk.Label(self.frame,text='每台机械臂添加一次配置，换臂时在下方切换。').pack(anchor='w',pady=(8,18))
+        ttk.Label(self.frame,text='填写服务器地址，连接机械臂',font=('Microsoft YaHei UI',17,'bold')).pack(anchor='w')
+        ttk.Label(self.frame,text='先填写服务器地址，再选择这台机械臂的配置。').pack(anchor='w',pady=(8,18))
         self.server=tk.StringVar(value=self.store.data['server']);self.calibration=tk.StringVar(value=self.store.data.get('calibration',''))
         self.selection=tk.StringVar();self.pair_code=tk.StringVar();self.station_id=tk.StringVar(value=self.store.data.get('stationId',''));self.station_selection=tk.StringVar();self.station_choices=self.store.data.get('stations',[]);self.status=tk.StringVar(value=self.store.notice or '准备连接')
         self.port_text=tk.StringVar();self.file_text=tk.StringVar();self.summary=tk.StringVar()
         self.profile_selection=tk.StringVar();self.profile_ids=[]
+        server_card=ttk.LabelFrame(self.frame,text='服务器地址',padding=12);server_card.pack(fill='x',pady=(0,12))
+        server_row=ttk.Frame(server_card);server_row.pack(fill='x')
+        self.server_box=ttk.Entry(server_row,textvariable=self.server);self.server_box.pack(side='left',fill='x',expand=True)
+        self.save_server_button=ttk.Button(server_row,text='保存地址',command=self.save_server);self.save_server_button.pack(side='right',padx=(12,0))
+        self.server_box.bind('<Return>',lambda event:self.save_server())
+        ttk.Label(server_card,text='填写实际服务器地址（含 http:// 或 https:// 和端口），保存后下次自动恢复。',wraplength=620).pack(anchor='w',pady=(6,0))
+        self.pair_row=ttk.Frame(server_card)
+        ttk.Label(self.pair_row,text='采集器配对码（教师端生成；首次连接或凭证过期时填写）',wraplength=620).pack(anchor='w')
+        self.pair_box=ttk.Entry(self.pair_row,textvariable=self.pair_code);self.pair_box.pack(fill='x',pady=4)
+        if not self.store.data.get('autoConnect',False):self.pair_row.pack(fill='x',pady=(10,0))
         card=ttk.LabelFrame(self.frame,text='当前机械臂配置',padding=12);card.pack(fill='x')
         file_row=ttk.Frame(card);file_row.pack(fill='x')
         self.profile_box=ttk.Combobox(file_row,textvariable=self.profile_selection,state='readonly');self.profile_box.pack(side='left',fill='x',expand=True);self.profile_box.bind('<<ComboboxSelected>>',self.select_saved_profile)
@@ -61,21 +71,16 @@ class ConnectorWindow:
         self.settings_button=ttk.Button(links,text='连接设置',command=self.toggle_settings);self.settings_button.pack(side='left')
         ttk.Button(links,text='查看日志',command=self.toggle_log).pack(side='left',padx=(10,0))
         self.details=ttk.Frame(self.frame,padding=(0,12,0,0))
-        ttk.Label(self.details,text='服务器地址（换网络时修改）').grid(row=0,column=0,sticky='w')
-        self.server_box=ttk.Entry(self.details,textvariable=self.server);self.server_box.grid(row=1,column=0,columnspan=2,sticky='ew',pady=(4,10))
         ttk.Label(self.details,text='USB 串口（检测到多个设备时选择）').grid(row=2,column=0,sticky='w')
         self.port_box=ttk.Combobox(self.details,textvariable=self.selection,state='readonly');self.port_box.grid(row=3,column=0,columnspan=2,sticky='ew',pady=(4,10));self.port_box.bind('<<ComboboxSelected>>',self.select_port)
         self.station_row=ttk.Frame(self.details)
         ttk.Label(self.station_row,text='连接哪一个体验台（选一次即可）').pack(anchor='w')
         self.station_box=ttk.Combobox(self.station_row,textvariable=self.station_selection,state='readonly');self.station_box.pack(fill='x',pady=4);self.station_box.bind('<<ComboboxSelected>>',self.select_station)
         self.update_stations(self.station_choices,self.station_id.get())
-        self.pair_row=ttk.Frame(self.details)
-        ttk.Label(self.pair_row,text='采集器配对码（首次连接或凭证过期时填写）').pack(anchor='w')
-        self.pair_box=ttk.Entry(self.pair_row,textvariable=self.pair_code);self.pair_box.pack(fill='x',pady=4)
         self.details.columnconfigure(0,weight=1)
-        if not self.store.data.get('autoConnect',False):self.pair_row.grid(row=6,column=0,columnspan=2,sticky='ew')
         self.log_box=tk.Text(self.frame,height=8,wrap='word',font=('Consolas',9),state='disabled')
         self.refresh_ports();self.update_summary();root.protocol('WM_DELETE_WINDOW',self.close)
+        self.fit_window()
         self.timer=root.after(250,self.poll)
 
     def update_summary(self):
@@ -92,10 +97,25 @@ class ConnectorWindow:
         else:self.profile_selection.set('')
         source=self.store.data.get('sourceCalibration') or self.calibration.get()
         self.file_text.set('文件：'+source if self.calibration.get() else '请添加或选择当前机械臂的配置文件')
-        self.summary.set('服务器：'+self.server.get()+' · 每台臂的配置分别保存')
+        from arm_devices import DRIVERS
+        driver=DRIVERS.get(self.store.data.get('driver'),{}).get('name','请选择机械臂配置')
+        self.summary.set('驱动：'+driver+'。更换服务器后请使用对应的采集器配对码。')
+
+    def save_server(self,show_status=True):
+        if self.process:return False
+        try:
+            previous=self.store.data.get('server')
+            saved=self.store.remember_server(self.server.get())
+            self.server.set(saved['server'])
+            if saved['server']!=previous:self.update_stations([], '')
+            if show_status:self.status.set('服务器地址已保存：'+saved['server'])
+            return True
+        except Exception as error:
+            self.status.set(friendly_error(error));self.server_box.focus_set();return False
 
     def select_file(self):
         if self.process:return
+        if not self.save_server(show_status=False):return
         from tkinter import filedialog
         file=filedialog.askopenfilename(title='添加这台机械臂的配置文件',filetypes=[('机械臂配置包','*.robot.json'),('校准 JSON','*.json')])
         if file:
@@ -133,26 +153,34 @@ class ConnectorWindow:
         self.manual_port=self.available[index] if index>=0 else None
         if self.manual_port:self.port_text.set('已选择 '+self.manual_port['port'])
 
+    def fit_window(self):
+        self.root.update_idletasks()
+        height=max(630,self.frame.winfo_reqheight()+12)
+        self.root.minsize(640,height);self.root.geometry('720x'+str(height))
+
     def toggle_settings(self,force=None):
         self.settings_open=not self.settings_open if force is None else force
-        if self.settings_open:self.details.pack(fill='x');self.root.geometry('720x760')
-        else:self.details.pack_forget();self.root.geometry('720x530')
+        if self.settings_open:self.details.pack(fill='x')
+        else:self.details.pack_forget()
         self.settings_button.configure(text='收起设置' if self.settings_open else '连接设置')
+        self.fit_window()
 
     def toggle_log(self):
         self.log_open=not self.log_open
-        if self.log_open:self.log_box.pack(fill='both',expand=True,pady=(10,0));self.root.geometry('720x880' if self.settings_open else '720x700')
-        else:self.log_box.pack_forget();self.root.geometry('720x760' if self.settings_open else '720x530')
+        if self.log_open:self.log_box.pack(fill='both',expand=True,pady=(10,0))
+        else:self.log_box.pack_forget()
+        self.fit_window()
 
     def append(self,text):
         self.log_box.configure(state='normal');self.log_box.insert('end',text+'\n');self.log_box.see('end');self.log_box.configure(state='disabled')
 
     def set_running(self,running):
-        for widget in (self.connect_button,self.file_button,self.refresh_button,self.server_box,self.pair_box):widget.configure(state='disabled' if running else 'normal')
+        for widget in (self.connect_button,self.file_button,self.refresh_button,self.server_box,self.save_server_button,self.pair_box):widget.configure(state='disabled' if running else 'normal')
         self.profile_box.configure(state='disabled' if running else 'readonly');self.station_box.configure(state='disabled' if running else 'readonly');self.port_box.configure(state='disabled' if running else 'readonly');self.stop_button.configure(state='normal' if running else 'disabled')
 
     def connect(self):
         if self.process:return
+        if not self.save_server(show_status=False):return
         if not self.calibration.get():self.select_file()
         if not self.calibration.get():return
         # Enumeration is read-only; never open candidate ports to guess protocols.
@@ -208,7 +236,7 @@ class ConnectorWindow:
         elif kind=='reconnecting':self.status.set('连接中断，正在自动重连…')
         elif kind=='failed':self.failure=event.get('message','连接失败');self.status.set(self.failure)
         elif kind=='pairing-required':
-            self.failure=event.get('message','服务器需要配对码');self.status.set(self.failure);self.pair_row.grid(row=6,column=0,columnspan=2,sticky='ew');self.toggle_settings(True)
+            self.failure=event.get('message','服务器需要配对码');self.status.set(self.failure);self.pair_row.pack(fill='x',pady=(10,0));self.fit_window()
         if kind!='following':self.append(json.dumps(event,ensure_ascii=False))
 
     def poll(self):
@@ -247,7 +275,11 @@ def gui(smoke_path=None):
         from tkinter import messagebox
         messagebox.showerror('连接配置无法读取',str(error));root.destroy();return
     if smoke_path:
-        root.update_idletasks();Path(smoke_path).write_text(json.dumps({'title':root.title(),'server':window.server.get(),'calibration':window.calibration.get(),'port':window.manual_port,'settingsOpen':window.settings_open,'profileName':window.store.data.get('calibrationName'),'profiles':window.profile_box['values'],'activeProfile':window.store.data.get('activeProfile'),'autoConnect':window.store.data.get('autoConnect',False)},ensure_ascii=False),encoding='utf-8');window.close();return
+        import ssl
+        from connector_tls import ssl_context
+        context=ssl_context('https://10.72.255.16')
+        assert context.check_hostname and context.verify_mode==ssl.CERT_REQUIRED
+        root.update_idletasks();Path(smoke_path).write_text(json.dumps({'title':root.title(),'server':window.server.get(),'calibration':window.calibration.get(),'port':window.manual_port,'settingsOpen':window.settings_open,'profileName':window.store.data.get('calibrationName'),'profiles':window.profile_box['values'],'activeProfile':window.store.data.get('activeProfile'),'autoConnect':window.store.data.get('autoConnect',False),'driver':window.store.data.get('driver'),'bundledCaLoaded':True},ensure_ascii=False),encoding='utf-8');window.close();return
     root.mainloop()
 
 if __name__=='__main__':

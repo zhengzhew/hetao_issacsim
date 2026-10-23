@@ -44,6 +44,31 @@ class AccessTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'WLAN'):
             authorize(self.args,'client-test','cfg-test',forbidden,self.emit)
         self.assertEqual(self.events,[])
+    def test_disabled_lan_policy_requests_pair_code(self):
+        for message in ('此服务器未启用局域网免配对','此服务器未配置局域网免配对'):
+            self.events.clear()
+            def disabled(*args,**kwargs):raise HTTPError(self.args.server,403,'Forbidden',{},io.BytesIO(json.dumps({'error':message}).encode()))
+            with self.assertRaisesRegex(RuntimeError,'采集器配对码'):
+                authorize(self.args,'client-test','cfg-test',disabled,self.emit)
+            self.assertEqual(self.events[0]['event'],'pairing-required')
+    def test_paired_mode_does_not_attempt_lan_enrollment_when_code_is_missing(self):
+        self.args.auto_connect=False
+        with self.assertRaisesRegex(RuntimeError,'采集器配对码'):
+            authorize(self.args,'client-test','cfg-test',self.call,self.emit)
+        self.assertEqual(self.calls,[])
+        self.assertEqual(self.events[0]['event'],'pairing-required')
+    def test_pair_code_authorization_is_reused_without_lan_enrollment(self):
+        self.args.auto_connect=False;self.args.pair_code='TEST-PAIR-CODE'
+        principal={'role':'device','stationId':'room1','expires':9999999999999}
+        def paired(server,path,data=None,token=None):
+            self.calls.append(path)
+            if path=='/platform/pair':return {'token':'paired-token','principal':principal}
+            if path=='/platform/me':return {'principal':principal}
+            raise AssertionError('Unexpected endpoint: '+path)
+        self.assertEqual(authorize(self.args,'client-test','cfg-test',paired,self.emit)[0],'paired-token')
+        self.args.pair_code=''
+        self.assertEqual(authorize(self.args,'client-test','cfg-test',paired,self.emit)[0],'paired-token')
+        self.assertEqual(self.calls,['/platform/pair','/platform/me','/platform/me'])
     def test_explicit_pair_code_remains_compatible_and_cannot_give_a_browser_role(self):
         self.args.pair_code='ONE-TIME'
         def wrong_role(server,path,data=None,token=None):

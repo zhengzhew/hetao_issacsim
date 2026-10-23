@@ -23,10 +23,33 @@ class ConfigTests(unittest.TestCase):
         store=ConnectorConfig(self.package,self.state);store.save('http://server:8080',CALIBRATION,USB)
         other=self.root/'new-version';other.mkdir();(other/'connector.json').write_text(json.dumps({'server':'http://localhost:8080'}))
         self.assertEqual(ConnectorConfig(other,self.state).data['server'],'http://server:8080')
+    def test_paired_release_overrides_legacy_lan_setting_and_preserves_arm(self):
+        store=ConnectorConfig(self.package,self.state)
+        saved=store.save('https://10.72.255.16',CALIBRATION,USB)
+        self.assertTrue(saved['autoConnect'])
+        (self.package/'connector.json').write_text(json.dumps({'server':'','autoConnect':False,'connectionMode':'pair-code'}))
+        updated=ConnectorConfig(self.package,self.state)
+        self.assertFalse(updated.data['autoConnect'])
+        self.assertEqual(updated.data['server'],saved['server'])
+        self.assertEqual(updated.data['profiles'],saved['profiles'])
+        self.assertEqual(updated.data['activeProfile'],saved['activeProfile'])
+        updated.remember_server(saved['server'])
+        self.assertFalse(ConnectorConfig(self.package,self.state).data['autoConnect'])
     def test_first_use_does_not_guess_an_arm_from_nearby_files(self):
         for name in ('leader_arm_calibration.json','leader_arm_isaac_calibration.json'):(self.package/name).write_bytes(CALIBRATION.read_bytes())
         store=ConnectorConfig(self.package,self.state,downloads=self.package)
         self.assertEqual(store.data['calibration'],'');self.assertEqual(store.profiles(),[])
+    def test_explicit_lan_release_restores_enrollment_after_paired_build(self):
+        (self.package/'connector.json').write_text(json.dumps({'connectionMode':'pair-code'}))
+        paired=ConnectorConfig(self.package,self.state)
+        saved=paired.save('https://10.72.255.16',CALIBRATION,USB)
+        self.assertFalse(saved['autoConnect'])
+        (self.package/'connector.json').write_text(json.dumps({'connectionMode':'lan','hardwareDriver':'feetech-so101'}))
+        lan=ConnectorConfig(self.package,self.state)
+        self.assertTrue(lan.data['autoConnect'])
+        self.assertEqual(lan.data['driver'],'feetech-so101')
+        self.assertEqual(lan.data['armId'],saved['armId'])
+        self.assertEqual(lan.data['server'],saved['server'])
     def test_wrong_json_does_not_replace_saved_configuration(self):
         store=ConnectorConfig(self.package,self.state);store.save('http://server:8080',CALIBRATION,USB);before=store.file.read_bytes()
         bad=self.root/'not-a-calibration.json';bad.write_text('{}')
@@ -147,6 +170,30 @@ class RobotPackTests(unittest.TestCase):
         self.assertEqual(list(mapping.targets([(a+b)/2 for a,b in zip(low,high)],limits).values()),[0.]*6)
         self.document['shoulder_pan']['drive_mode']=1
         self.assertEqual(RangeCalibration(self.document).targets(low,limits)['Rotation'],1.)
+    def test_feetech_release_corrects_legacy_driver_without_changing_arm_identity(self):
+        usb={**USB,'serial':'leader-usb'}
+        old=self.store.save('https://10.72.255.16',self.manifest,usb)
+        self.assertEqual(old['driver'],'desheng-se-v401')
+        (self.root/'connector.json').write_text(json.dumps({'hardwareDriver':'feetech-so101','connectionMode':'pair-code'}))
+        upgraded=ConnectorConfig(self.root,self.root/'state')
+        for field in ('server','armId','calibrationHash','expectedLeaderSerial','profileKey','portIdentity','sourceCalibration'):
+            self.assertEqual(upgraded.data[field],old[field],field)
+        self.assertEqual(upgraded.data['driver'],'feetech-so101')
+        self.assertFalse(upgraded.data['autoConnect'])
+        saved=upgraded.save(old['server'],upgraded.data['calibration'],usb)
+        self.assertEqual(saved['driver'],'feetech-so101')
+        self.assertEqual(Path(saved['calibration']).read_bytes(),self.leader.read_bytes())
+        selected=ConnectorConfig(self.root,self.root/'state').select_profile(old['profileKey'])
+        self.assertEqual(selected['driver'],'feetech-so101')
+        self.assertEqual(selected['armId'],old['armId'])
+        # A generic later build must also preserve the explicitly saved choice.
+        (self.root/'connector.json').unlink()
+        generic=ConnectorConfig(self.root,self.root/'state')
+        self.assertEqual(generic.save(old['server'],generic.data['calibration'])['driver'],'feetech-so101')
+    def test_feetech_release_uses_explicit_driver_for_new_pack(self):
+        (self.root/'connector.json').write_text(json.dumps({'hardwareDriver':'feetech-so101'}))
+        store=ConnectorConfig(self.root,self.root/'state')
+        self.assertEqual(store.save('https://server',self.manifest)['driver'],'feetech-so101')
     def test_invalid_named_joint_fields_are_rejected(self):
         for field,value in [('homing_offset',2048),('range_min',4095),('drive_mode',2),('id',2)]:
             document=json.loads(json.dumps(self.document));document['shoulder_pan'][field]=value

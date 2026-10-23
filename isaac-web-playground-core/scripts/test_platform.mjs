@@ -55,7 +55,7 @@ test('gateway isolates stations, protects management and expires/revokes credent
     assert.equal(calls.length,2)
   }finally{if(gateway){gateway.close();await new Promise(r=>gateway.server.close(r))}for(const worker of workers)await new Promise(r=>worker.close(r));cleanup(directory)}
 })
-test('WebSocket coalesces poses, rejects old samples, and releases ownership',async()=>{
+for (const driver of ['desheng-se-v401','feetech-so101']) test(`${driver}: WebSocket coalesces poses, rejects old samples, and releases ownership`,async()=>{
   const directory=temporary();let gateway,ws;const applied=[];let released=0
   const worker=http.createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;const input=raw?JSON.parse(raw):{}
@@ -73,7 +73,7 @@ test('WebSocket coalesces poses, rejects old samples, and releases ownership',as
     ws=new WebSocket(`ws://127.0.0.1:${gateway.server.address().port}/platform/teleop`,{headers:{Authorization:'Bearer '+credential.token}})
     await once(ws,'open')
     const ready=new Promise(resolve=>ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='ready')resolve(m)}))
-    ws.send(JSON.stringify({type:'hello',driver:'desheng-se-v401',armId:'arm-test',calibrationHash:'f'.repeat(64)}))
+    ws.send(JSON.stringify({type:'hello',driver,armId:'arm-test',calibrationHash:'f'.repeat(64)}))
     const info=await ready
     const sample=seq=>({type:'sample',seq,launchId:info.launchId,capturedAt:Date.now(),positions:{Jaw:.5}})
     ws.send(JSON.stringify({...sample(1),capturedAt:Date.now()-5000}))
@@ -100,6 +100,14 @@ test('WebSocket coalesces poses, rejects old samples, and releases ownership',as
     assert.throws(()=>store.approveArm(profile.armId,'c'.repeat(64)),/已变化/)
     store.approveArm(profile.armId,changed.calibrationHash);store.bindArm(changed)
     assert.equal(store.arms()[0].calibrationHash,changed.calibrationHash)
+    const corrected={...changed,driver:'feetech-so101'}
+    assert.throws(()=>store.bindArm(corrected),/发生变化/)
+    assert.equal(store.arms()[0].driver,'desheng-se-v401')
+    assert.equal(store.arms()[0].pending.driver,'feetech-so101')
+    store.approveArm(corrected.armId,corrected.calibrationHash)
+    store=new AccessStore(directory,[station('room1',22001)])
+    store.bindArm(corrected)
+    assert.equal(store.arms()[0].driver,'feetech-so101')
     assert.throws(()=>store.bindArm({...profile,armId:'new-arm',driver:'unknown'}),/无效/)
   } finally {cleanup(directory)}
 })
