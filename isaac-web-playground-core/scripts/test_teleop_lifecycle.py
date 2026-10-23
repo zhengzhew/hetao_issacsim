@@ -36,10 +36,11 @@ class TeleopTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'another leader'):self.engage('request-2','client-b')
     def test_equal_elapsed_time_has_equal_slew_at_different_packet_rates(self):
         positions=[]
-        for hz in (10,20,40):
+        for hz in (10,20,40,50):
             self.module.teleop_disengage();self.robot.targets={'joint':0.};token=self.engage()
             start=self.now
             for seq in range(1,hz+1):self.now=start+seq/hz;self.sample(token,seq)
+            self.assertEqual(self.module.TELEOP['rate_hz'],float(hz))
             positions.append(self.robot.targets['joint'])
         for position in positions:self.assertAlmostEqual(position,1.6,places=7)
     def test_zero_elapsed_and_out_of_order_samples_cannot_move_robot(self):

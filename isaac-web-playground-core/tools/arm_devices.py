@@ -5,9 +5,12 @@ import uuid
 from pathlib import Path
 from desheng_calibration import RangeCalibration
 
+DEFAULT_SAMPLE_RATE = 50
+MAX_SAMPLE_RATE = 50
+
 DRIVERS = {
-    'desheng-se-v401': {'name':'德晟 SE（已验证兼容读取协议）', 'verified':True, 'max_rate':30},
-    'feetech-so101': {'name':'飞特 STS3215 · 1000000 波特率', 'verified':True, 'max_rate':30},
+    'desheng-se-v401': {'name':'德晟 SE（已验证兼容读取协议）', 'verified':True, 'max_rate':MAX_SAMPLE_RATE},
+    'feetech-so101': {'name':'飞特 STS3215 · 1000000 波特率', 'verified':True, 'max_rate':MAX_SAMPLE_RATE},
     'desheng-v5': {'name':'德晟其他版本／V5（待协议验证）', 'verified':False},
     'unknown': {'name':'其他／未知版本（请先确认协议）', 'verified':False},
 }

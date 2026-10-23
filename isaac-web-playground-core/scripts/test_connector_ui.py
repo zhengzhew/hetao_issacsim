@@ -28,6 +28,7 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(len(self.calls),1);command=self.calls[0]
         self.assertEqual(command[command.index('--port')+1],'COM20')
         self.assertEqual(command[command.index('--server')+1],'http://server:8080')
+        self.assertEqual(command[command.index('--rate')+1],'50')
         self.assertIn('--state-dir',command);self.assertNotIn('--auto-connect',command);self.assertNotIn('--pair-code',command)
         self.assertEqual(self.window.pair_row.winfo_manager(),'pack')
         self.assertEqual(str(self.window.connect_button['state']),'disabled')

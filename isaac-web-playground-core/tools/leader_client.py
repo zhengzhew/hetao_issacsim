@@ -9,14 +9,15 @@ from urllib.request import Request
 from urllib.error import HTTPError
 from urllib.parse import urlparse
 import websocket
-from arm_devices import client_identity, load_profile, make_reader
+from arm_devices import DEFAULT_SAMPLE_RATE, MAX_SAMPLE_RATE, client_identity, load_profile, make_reader
 from connector_config import atomic_json
 from connector_tls import open_url, websocket_ssl_options
 
 class LatestSampler:
-    def __init__(self, reader, rate=20, clock=time.monotonic):
+    def __init__(self, reader, rate=DEFAULT_SAMPLE_RATE, clock=time.monotonic):
         self.reader=reader;self.rate=rate;self.clock=clock
         self.stop_event=threading.Event();self.lock=threading.Lock();self.latest=None;self.error=None
+        self.changed=threading.Condition(self.lock)
         self.thread=threading.Thread(target=self.run,daemon=True)
     def start(self):self.thread.start()
     def run(self):
@@ -25,16 +26,50 @@ class LatestSampler:
             while not self.stop_event.is_set():
                 positions=self.reader.positions();sequence+=1
                 sample={'raw':positions,'seq':sequence,'capturedAt':time.time()*1000,'monotonic':self.clock()}
-                with self.lock:self.latest=sample
+                with self.changed:self.latest=sample;self.changed.notify_all()
                 target=max(target+1/self.rate,self.clock())
                 self.stop_event.wait(max(0,target-self.clock()))
         except Exception as error:
             self.error=error;self.stop_event.set()
     def snapshot(self):
         with self.lock:return dict(self.latest) if self.latest else None
+    def wait_next(self,sequence,timeout=.1):
+        with self.changed:
+            self.changed.wait_for(lambda:self.latest and self.latest['seq']>sequence,timeout)
+            return dict(self.latest) if self.latest and self.latest['seq']>sequence else None
     def stop(self):
         self.stop_event.set();self.thread.join(timeout=5)
         if self.thread.is_alive():raise RuntimeError('串口读取未退出，不能重用该串口')
+
+
+class LatestPoseSender:
+    """Send fresh poses independently of socket receive/acknowledgement timing."""
+    def __init__(self,sampler,ws,calibration,connected_at):
+        self.sampler=sampler;self.ws=ws;self.calibration=calibration;self.connected_at=connected_at
+        self.lock=threading.Lock();self.limits=None;self.launch=None;self.offset=None
+        self.stop_event=threading.Event();self.error=None
+        self.thread=threading.Thread(target=self.run,daemon=True)
+    def start(self):self.thread.start()
+    def set_clock(self,offset):
+        with self.lock:self.offset=offset
+    def set_scene(self,limits,launch=None):
+        with self.lock:self.limits=limits;self.launch=launch
+    def run(self):
+        sequence=0
+        try:
+            while not self.stop_event.is_set():
+                sample=self.sampler.wait_next(sequence)
+                if not sample or self.stop_event.is_set():continue
+                sequence=sample['seq']
+                with self.lock:limits,launch,offset=self.limits,self.launch,self.offset
+                # Never replay a pose captured before this connection or after a
+                # long blocked write. The sampler keeps only the latest pose.
+                if limits is None or offset is None or sample['monotonic']<self.connected_at or time.monotonic()-sample['monotonic']>=.15:continue
+                self.ws.send(json.dumps({'type':'sample','seq':sequence,'capturedAt':sample['capturedAt']+offset,'launchId':launch,'positions':self.calibration.targets(sample['raw'],limits)}))
+        except Exception as error:self.error=error;self.stop_event.set()
+    def stop(self):
+        self.stop_event.set();self.thread.join(timeout=5)
+        if self.thread.is_alive():raise RuntimeError('网络发送未退出')
 
 def log(event,**values):print(json.dumps({'event':event,**values},ensure_ascii=False),flush=True)
 def request(server,path,data=None,token=None):
@@ -107,10 +142,10 @@ def main():
     parser.add_argument('--auto-connect',action='store_true')
     parser.add_argument('--station-id',default='')
     parser.add_argument('--state-dir',default=str(Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'HetaoIsaacConnector'))
-    parser.add_argument('--rate',type=float,default=20)
+    parser.add_argument('--rate',type=float,default=DEFAULT_SAMPLE_RATE)
     parser.add_argument('--stop-file')
     args=parser.parse_args()
-    if not 1<=args.rate<=30:parser.error('rate must be 1..30')
+    if not 1<=args.rate<=MAX_SAMPLE_RATE:parser.error(f'rate must be 1..{MAX_SAMPLE_RATE}')
     server=args.server=args.server.rstrip('/');parsed=urlparse(server)
     if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.path not in ('','/') or parsed.username:
         parser.error('server must be an HTTP(S) origin')
@@ -126,49 +161,51 @@ def main():
     except Exception:
         reader.close();raise
     sampler.start();attempt=0;refresh_auth=False
-    log('serial-ready',port=args.port,driver=args.driver,baud=reader.port.baudrate,raw=initial,armId=args.arm_id,clientId=client_id,servo_writes=False)
+    log('serial-ready',port=args.port,driver=args.driver,baud=reader.port.baudrate,raw=initial,armId=args.arm_id,clientId=client_id,target_rate_hz=args.rate,servo_writes=False)
     try:
         while not (stop and stop.exists()):
             if sampler.error:raise sampler.error
-            ws=None
+            ws=None;sender=None
             try:
                 if args.auto_connect and (refresh_auth or principal.get('expires',0)<time.time()*1000+30000):
                     token,principal=authorize(args,client_id,profile['armId']);refresh_auth=False
                 endpoint=('wss' if parsed.scheme=='https' else 'ws')+'://'+parsed.netloc+'/platform/teleop'
                 ws=websocket.create_connection(endpoint,header={'Authorization':'Bearer '+token},timeout=3,suppress_origin=True,enable_multithread=True,http_no_proxy=[parsed.hostname],sslopt=websocket_ssl_options(endpoint))
-                ws.settimeout(.02)
+                ws.settimeout(.1)
                 start_wall=time.time()*1000;start_mono=time.monotonic()
                 ws.send(json.dumps({'type':'clock','echo':start_wall}))
                 hello={k:profile[k] for k in ['armId','driver','calibrationHash']}
                 ws.send(json.dumps({'type':'hello',**hello,'port':args.port}))
-                limits=None;launch=None;offset=None;last_seq=0;report=0;last_reply=time.monotonic();connected_at=time.monotonic();attempt=0
+                report=0;last_reply=time.monotonic();attempt=0
+                sender=LatestPoseSender(sampler,ws,calibration,time.monotonic());sender.start()
                 while not (stop and stop.exists()):
                     if sampler.error:raise sampler.error
+                    if sender.error:raise sender.error
                     try:
                         raw=ws.recv()
                         if not raw:raise ConnectionError('服务器已断开')
                         message=json.loads(raw);last_reply=time.monotonic()
                         if message['type']=='clock':
-                            offset=message['serverTime']-(start_wall+(time.monotonic()-start_mono)*500)
+                            sender.set_clock(message['serverTime']-(start_wall+(time.monotonic()-start_mono)*500))
                         elif message['type']=='ready':
-                            limits=message['limits'];calibration.validate_limits(limits);launch=message['launchId']
-                            log('scene-reconnected',launchId=launch)
+                            limits=message['limits'];calibration.validate_limits(limits)
+                            sender.set_scene(limits,message['launchId'])
+                            log('scene-reconnected',launchId=message['launchId'])
                         elif message['type']=='applied' and time.monotonic()-report>=2:
                             report=time.monotonic();log('following',samples=message['seq'],rate_hz=message.get('rate_hz'),ack_ms=message.get('ackMs'))
                         elif message['type'] in ('error','waiting'):
-                            if message['type']=='waiting':limits=None
+                            if message['type']=='waiting':sender.set_scene(None)
                             log(message['type'],reason=message.get('message'))
                             if message.get('fatal'):raise RuntimeError(message.get('message','设备配置无效'))
                     except websocket.WebSocketTimeoutException:pass
                     if time.monotonic()-last_reply>8:raise ConnectionError('服务器响应中断')
                     if time.monotonic()-start_mono>30:
                         start_wall=time.time()*1000;start_mono=time.monotonic();ws.send(json.dumps({'type':'clock','echo':start_wall}))
-                    sample=sampler.snapshot()
-                    # Reconnects may never replay the sample cached before connecting.
-                    if limits and offset is not None and sample and sample['seq']>last_seq and sample['monotonic']>=connected_at and time.monotonic()-sample['monotonic']<.15:
-                        ws.send(json.dumps({'type':'sample','seq':sample['seq'],'capturedAt':sample['capturedAt']+offset,'launchId':launch,'positions':calibration.targets(sample['raw'],limits)}))
-                        last_seq=sample['seq']
             except (OSError,ConnectionError,websocket.WebSocketException) as error:
+                # End the old sender before backoff/reconnect so two connections
+                # can never send poses at the same time.
+                if sender:sender.stop();sender=None
+                if ws:ws.close();ws=None
                 refresh_auth=args.auto_connect
                 attempt+=1;log('reconnecting',reason=str(error))
                 if attempt>=10:raise RuntimeError('连续连接失败，请检查配对状态和服务器') from error
@@ -176,7 +213,10 @@ def main():
                     if stop and stop.exists():break
                     time.sleep(.1)
             finally:
-                if ws:ws.close()
+                try:
+                    if sender:sender.stop()
+                finally:
+                    if ws:ws.close()
     finally:
         try:sampler.stop()
         finally:reader.close()

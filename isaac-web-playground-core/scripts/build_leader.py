@@ -12,6 +12,7 @@ import zipfile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from connector_config import normalize_server
+from arm_devices import DEFAULT_SAMPLE_RATE
 
 
 def main():
@@ -36,19 +37,19 @@ def main():
     config={'server':server,'calibration':'','autoConnect':False,
             'connectionMode':'pair-code','hardwareDriver':args.driver}
     (package/'connector.json').write_text(json.dumps(config,indent=2),encoding='utf-8')
-    (package/'使用说明.txt').write_text(f'''SO-101 Windows 连接工具 V6（配对码连接）
+    (package/'使用说明.txt').write_text(f'''SO-101 Windows 连接工具 V6（{DEFAULT_SAMPLE_RATE} Hz 配对码连接）
 
 1. 关闭旧版工具，完整解压，在插着 USB 主臂的电脑运行 SO101-Leader.exe。
 2. 主界面可输入并保存服务器地址，支持 HTTP、HTTPS 和端口。默认地址：{server or '首次使用时填写'}。
 3. 添加这台主臂的 .robot.json 配置包或主臂校准 JSON，导入时保留配置包的 calibration 子目录。
 4. 驱动：{args.driver}。飞特 STS3215 使用 1000000 波特率，德晟 SE 使用 115200 波特率。
 5. 到教师管理页选择体验台，生成“采集器配对码”，填写到工具主界面的配对码输入框，再点连接。不要使用浏览器配对码。
-6. 点击“连接机械臂”。每台臂独立保存校准和 USB 绑定；换臂先停止，再选择对应配置。
+6. 点击“连接机械臂”。目标采样/发送频率为 {DEFAULT_SAMPLE_RATE} 次/秒，状态显示仿真端实际应用频率。每台臂独立保存校准和 USB 绑定；换臂先停止，再选择对应配置。
 7. 结束时点击“停止同步”。工具只读取主臂型号/位置，不写入舵机控制或校准参数。
 
 首次配对或凭证过期时填写新码；有效凭证自动记住。新码只使用一次，不保存到配置文件。
 解压新版会保留服务器、机械臂编号和校准，改用采集器配对。输入框一直显示在主界面，无需展开设置。
-驱动或校准变更若触发服务器待确认，请在教师管理页核对后确认，再连接。
+新版服务器在重连时自动更新驱动或校准登记。
 已包含 Python 环境，不必另装 Python。包内不包含设备凭证、老师密码或个人校准文件。
 内置根证书仅用于 https://10.72.255.16:443 及对应 WSS；仍验证证书与主机名。
 其他服务器使用系统默认信任链。普通 JSON 和 USB 芯片不会被当作舵机型号识别依据。
@@ -61,6 +62,7 @@ def main():
     assert state['server']==server and state['driver']==args.driver
     assert state['autoConnect']==config['autoConnect'] and state['bundledCaLoaded'] is True
     assert state['pairCodeOnMainWindow'] is True and 'V6' in state['title']
+    assert f'{DEFAULT_SAMPLE_RATE} Hz' in state['title']
     assert not state['calibration'] and not state['profiles']
     # Check the frozen UI against the old LAN settings that caused the hidden input.
     legacy=work/'legacy-state';legacy.mkdir()

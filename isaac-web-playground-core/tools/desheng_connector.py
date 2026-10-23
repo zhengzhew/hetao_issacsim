@@ -7,6 +7,7 @@ import sys
 import time
 import traceback
 from serial.tools import list_ports
+from arm_devices import DEFAULT_SAMPLE_RATE
 from connector_config import ConnectorConfig, choose_port, friendly_error, state_directory
 
 ROOT=Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else Path(__file__).resolve().parents[1]
@@ -35,7 +36,7 @@ class ConnectorWindow:
         self.enumerate_ports=enumerate_ports;self.spawn=spawn;self.process=None;self.closing=False
         self.offset=0;self.partial='';self.failure='';self.available=[];self.manual_port=None
         self.settings_open=False;self.log_open=False;self.log_path=None;self.stop_path=None
-        root.title('SO-101 连接工具 V6 · 配对码连接');root.geometry('720x700');root.minsize(640,630)
+        root.title(f'SO-101 连接工具 V6 · {DEFAULT_SAMPLE_RATE} Hz · 配对码连接');root.geometry('720x700');root.minsize(640,630)
         style=ttk.Style(root);style.configure('TButton',padding=(14,9));style.configure('TLabel',font=('Microsoft YaHei UI',10));style.configure('Connect.TButton',font=('Microsoft YaHei UI',13,'bold'),padding=16)
         self.frame=ttk.Frame(root,padding=22);self.frame.pack(fill='both',expand=True)
         ttk.Label(self.frame,text='填写服务器地址，连接机械臂',font=('Microsoft YaHei UI',17,'bold')).pack(anchor='w')
@@ -203,6 +204,7 @@ class ConnectorWindow:
             command=[sys.executable]
             if not getattr(sys,'frozen',False):command.append(str(Path(__file__).resolve()))
             command+=['--worker',str(self.log_path),'--port',self.manual_port['port'],'--server',saved['server'],'--calibration',saved['calibration'],'--arm-id',saved['armId'],'--driver',saved['driver'],'--state-dir',str(self.store.directory),'--stop-file',str(self.stop_path)]
+            command+=['--rate',str(DEFAULT_SAMPLE_RATE)]
             if self.station_id.get():command+=['--station-id',self.station_id.get()]
             if self.pair_code.get().strip():command+=['--pair-code',self.pair_code.get().strip()]
             self.process=self.spawn(command,cwd=ROOT,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
