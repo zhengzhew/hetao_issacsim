@@ -11,11 +11,15 @@ V5 增加飞特 STS3215 只读采集，主界面支持修改服务器地址，�
 
 ```powershell
 python -m pip install -r tools/requirements-leader.txt pyinstaller
-python scripts/build_leader.py --driver feetech-so101 --connection-mode lan --server https://10.72.255.16
+# 免配对：直连 8080，不经过 HTTPS 反代
+python scripts/build_leader.py --driver feetech-so101 --connection-mode lan --server http://10.72.255.16:8080
+# 需要配对码：走 HTTPS/WSS，连接器用随包根证书校验
+python scripts/build_leader.py --driver feetech-so101 --connection-mode pair-code --server https://10.72.255.16
 ```
 
 `lan` 只向服务器申请局域网接入，仍受服务器的 `localConnectorEnabled` 和网段判断约束。
-需要配对码的部署改用 `--connection-mode pair-code`；这也是此前独立提供的飞特 V5 包使用的模式。
+免配对必须直连 `http://10.72.255.16:8080`：HTTPS 入口经反代转发并带代理头，服务器按“仅接受直接局域网连接”拒绝，
+该场景改用 `--connection-mode pair-code` 走 HTTPS/WSS；这也是此前独立提供的飞特 V5 包使用的模式。
 德晟设备使用 `--driver desheng-se-v401`。省略 `--server` 时首次使用由用户填写，旧设置仍会恢复。
 新包明确配置的驱动和连接模式优先于旧包保存的值，但保留机械臂编号、校准内容、USB 绑定和服务器地址。
 
