@@ -78,7 +78,7 @@ test('gateway isolates stations, protects management and expires/revokes credent
     assert.equal(calls.length,2)
   }finally{if(gateway){gateway.close();await new Promise(r=>gateway.server.close(r))}for(const worker of workers)await new Promise(r=>worker.close(r));cleanup(directory)}
 })
-for (const driver of ['desheng-se-v401','feetech-so101']) test(`${driver}: WebSocket coalesces poses, rejects old samples, and releases ownership`,async()=>{
+for (const driver of ['desheng-se-v401','feetech-so101']) test(`${driver}: changed profile connects, coalesces poses, and releases ownership`,{timeout:10000},async()=>{
   const directory=temporary();let gateway,ws;const applied=[];let released=0
   const worker=http.createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;const input=raw?JSON.parse(raw):{}
@@ -91,13 +91,17 @@ for (const driver of ['desheng-se-v401','feetech-so101']) test(`${driver}: WebSo
   }).listen(0,'127.0.0.1');await once(worker,'listening')
   try{
     gateway=createGateway({root,directory,config:{port:0,stations:[station('room1',worker.address().port)]}})
+    gateway.access.bindArm({armId:'arm-test',driver:driver==='feetech-so101'?'desheng-se-v401':'feetech-so101',calibrationHash:'a'.repeat(64)})
     gateway.server.listen(0,'127.0.0.1');await once(gateway.server,'listening')
     const credential=gateway.access.issue('device','room1',{clientId:'client-test'})
     ws=new WebSocket(`ws://127.0.0.1:${gateway.server.address().port}/platform/teleop`,{headers:{Authorization:'Bearer '+credential.token}})
     await once(ws,'open')
-    const ready=new Promise(resolve=>ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='ready')resolve(m)}))
+    const ready=new Promise((resolve,reject)=>ws.on('message',raw=>{const m=JSON.parse(raw);if(m.type==='ready')resolve(m);else if(m.fatal)reject(Error(m.message))}))
     ws.send(JSON.stringify({type:'hello',driver,armId:'arm-test',calibrationHash:'f'.repeat(64)}))
     const info=await ready
+    assert.equal(gateway.access.arms()[0].driver,driver)
+    assert.equal(gateway.access.arms()[0].calibrationHash,'f'.repeat(64))
+    assert.equal(gateway.access.arms()[0].pending,undefined)
     const sample=seq=>({type:'sample',seq,launchId:info.launchId,capturedAt:Date.now(),positions:{Jaw:.5}})
     ws.send(JSON.stringify({...sample(1),capturedAt:Date.now()-5000}))
     for(let i=2;i<=15;i++)ws.send(JSON.stringify(sample(i)))
@@ -109,28 +113,50 @@ for (const driver of ['desheng-se-v401','feetech-so101']) test(`${driver}: WebSo
   }finally{ws?.terminate();if(gateway){gateway.close();await new Promise(r=>gateway.server.close(r))}await new Promise(r=>worker.close(r));cleanup(directory)}
 })
 
- test('arm identity persists across computers and profile changes need teacher approval',()=>{
+test('arm identity persists and valid calibration or driver changes connect immediately',()=>{
   const directory=temporary()
   try {
     let store=new AccessStore(directory,[station('room1',22001)])
     const profile={armId:'school-arm-01',driver:'desheng-se-v401',calibrationHash:'a'.repeat(64)}
     store.bindArm(profile)
+    const registeredAt=store.arms()[0].registeredAt
     store=new AccessStore(directory,[station('room1',22001)])
     store.bindArm({...profile,clientId:'different-computer',port:'COM99'})
     const changed={...profile,calibrationHash:'b'.repeat(64)}
-    assert.throws(()=>store.bindArm(changed),/发生变化/)
-    assert.equal(store.arms()[0].calibrationHash,profile.calibrationHash)
-    assert.throws(()=>store.approveArm(profile.armId,'c'.repeat(64)),/已变化/)
-    store.approveArm(profile.armId,changed.calibrationHash);store.bindArm(changed)
+    store.bindArm(changed)
     assert.equal(store.arms()[0].calibrationHash,changed.calibrationHash)
     const corrected={...changed,driver:'feetech-so101'}
-    assert.throws(()=>store.bindArm(corrected),/发生变化/)
-    assert.equal(store.arms()[0].driver,'desheng-se-v401')
-    assert.equal(store.arms()[0].pending.driver,'feetech-so101')
-    store.approveArm(corrected.armId,corrected.calibrationHash)
+    store.bindArm(corrected)
     store=new AccessStore(directory,[station('room1',22001)])
     store.bindArm(corrected)
     assert.equal(store.arms()[0].driver,'feetech-so101')
+    assert.equal(store.arms()[0].pending,undefined)
+    assert.equal(store.arms()[0].registeredAt,registeredAt)
+    const updates=store.data.audit.filter(row=>row.action==='arm-profile-updated')
+    assert.equal(updates.length,2)
+    assert.equal(updates[1].previous.driver,'desheng-se-v401')
+    assert.throws(()=>store.bindArm({...corrected,driver:'unknown'}),/无效/)
+    assert.throws(()=>store.bindArm({...corrected,calibrationHash:'invalid'}),/无效/)
+    assert.equal(store.arms()[0].driver,'feetech-so101')
+    assert.equal(store.arms()[0].calibrationHash,corrected.calibrationHash)
     assert.throws(()=>store.bindArm({...profile,armId:'new-arm',driver:'unknown'}),/无效/)
+  } finally {cleanup(directory)}
+})
+
+for (const usePending of [true,false]) test(`legacy pending profile clears on reconnect: use pending=${usePending}`,()=>{
+  const directory=temporary()
+  try {
+    let store=new AccessStore(directory,[station('room1',22001)])
+    const original={armId:'legacy-arm',driver:'desheng-se-v401',calibrationHash:'a'.repeat(64)}
+    const pending={...original,driver:'feetech-so101',calibrationHash:'b'.repeat(64)}
+    store.bindArm(original)
+    Object.values(store.data.arms)[0].pending={...pending,at:1000};store.save()
+    store=new AccessStore(directory,[station('room1',22001)])
+    const incoming=usePending?pending:original
+    store.bindArm(incoming)
+    store=new AccessStore(directory,[station('room1',22001)])
+    assert.equal(store.arms()[0].driver,incoming.driver)
+    assert.equal(store.arms()[0].calibrationHash,incoming.calibrationHash)
+    assert.equal(store.arms()[0].pending,undefined)
   } finally {cleanup(directory)}
 })

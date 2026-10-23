@@ -91,9 +91,11 @@ export class AccessStore {
       if (Object.keys(this.data.arms).length>=500) throw new AccessError('机械臂登记数量已达上限',429)
       this.data.arms[key]={...profile,registeredAt:this.clock()};this.record('arm-registered',profile);return
     }
-    if (current.driver===driver&&current.calibrationHash===calibrationHash) return
-    current.pending={...profile,at:this.clock()};this.record('arm-profile-change-requested',profile)
-    throw new AccessError('该机械臂的驱动或校准文件发生变化，请老师在管理页核对后确认，再重新连接',409)
+    if (current.driver===driver&&current.calibrationHash===calibrationHash&&!current.pending) return
+    const previous={driver:current.driver,calibrationHash:current.calibrationHash}
+    // A valid connector profile is the current configuration, not an approval request.
+    Object.assign(current,profile,{updatedAt:this.clock()});delete current.pending
+    this.record('arm-profile-updated',{...profile,previous})
   }
   approveArm(armId, calibrationHash) {
     const current=this.data.arms[digest(armId)],pending=current?.pending

@@ -10,7 +10,7 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright')
 const root=path.resolve(import.meta.dirname,'..'),directory=fs.mkdtempSync(path.join(os.tmpdir(),'isaac-ui-test-'))
 const gateway=createGateway({root,directory,config:{port:0,localConnector:{enabled:true,interfaces:['WLAN']},stations:[{id:'room1',name:'测试体验台',webPort:21991,bridgePort:21992,signalPort:21993,mediaPort:21994}]}})
 gateway.access.bindArm({armId:'UI-test-arm',driver:'desheng-se-v401',calibrationHash:'a'.repeat(64)})
-try{gateway.access.bindArm({armId:'UI-test-arm',driver:'desheng-se-v401',calibrationHash:'b'.repeat(64)})}catch{}
+gateway.access.bindArm({armId:'UI-test-arm',driver:'feetech-so101',calibrationHash:'b'.repeat(64)})
 gateway.server.listen(0,'127.0.0.1');await once(gateway.server,'listening')
 const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext(),page=await context.newPage(),errors=[]
 page.on('pageerror',error=>errors.push(error.message))
@@ -20,8 +20,8 @@ try{
   assert.equal(await page.evaluate(async()=> (await fetch('/platform/connector/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clientId:'browser-test'})})).status),403)
   await page.locator('#password').fill(fs.readFileSync(path.join(directory,'teacher-password.txt'),'utf8').trim())
   await page.locator('#teacherForm button').click();await page.locator('#manage').waitFor({state:'visible'})
-  await page.getByRole('button',{name:'已核对设备与文件，使用新校准'}).click()
-  await page.getByRole('button',{name:'已核对设备与文件，使用新校准'}).waitFor({state:'hidden'})
+  await page.locator('#arms').getByText('UI-test-arm · feetech-so101',{exact:true}).waitFor()
+  assert.equal(await page.getByRole('button',{name:'已核对设备与文件，使用新校准'}).count(),0)
   assert.equal(gateway.access.arms()[0].calibrationHash,'b'.repeat(64))
   await page.locator('#deviceCode').click();await page.locator('#pairResult code').waitFor()
   assert.match(await page.locator('#pairResult code').innerText(),/^[A-F0-9]{12}$/)
@@ -35,5 +35,5 @@ try{
   await learner.close();assert.deepEqual(errors,[])
   fs.mkdirSync(path.join(root,'run/platform-ui-check'),{recursive:true})
   await page.screenshot({path:path.join(root,'run/platform-ui-check/manage.png'),fullPage:true})
-  console.log('Browser login, pairing, operator cookie, calibration approval and management permission: PASS')
+  console.log('Browser login, pairing, operator cookie, automatic profile update and management permission: PASS')
 }finally{await browser.close();gateway.close();await new Promise(r=>gateway.server.close(r));assert.ok(directory.startsWith(path.join(os.tmpdir(),'isaac-ui-test-')));fs.rmSync(directory,{recursive:true,force:true})}
