@@ -1,4 +1,4 @@
-"""Build the Windows connector with an explicit servo driver and access mode."""
+"""Build the paired Windows connector with an explicit servo driver."""
 import argparse
 import hashlib
 import json
@@ -18,8 +18,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server',default='',help='Optional HTTP(S) origin; blank prompts on first use')
     parser.add_argument('--driver',choices=['desheng-se-v401','feetech-so101'],default='desheng-se-v401')
-    parser.add_argument('--connection-mode',choices=['lan','pair-code'],default='lan',
-                        help='lan requires server-authorized local enrollment; pair-code uses teacher-issued codes')
+    parser.add_argument('--connection-mode',choices=['pair-code'],default='pair-code',
+                        help='V6 uses teacher-issued collector pairing codes')
     args=parser.parse_args()
     if sys.platform!='win32':parser.error('Build the Windows EXE on Windows')
     server=normalize_server(args.server) if args.server.strip() else ''
@@ -33,22 +33,21 @@ def main():
         '--paths',str(ROOT/'tools'),str(ROOT/'tools/desheng_connector.py'),
     ],check=True,cwd=ROOT)
     package=work/'dist/SO101-Leader'
-    config={'server':server,'calibration':'','autoConnect':args.connection_mode=='lan',
-            'connectionMode':args.connection_mode,'hardwareDriver':args.driver}
+    config={'server':server,'calibration':'','autoConnect':False,
+            'connectionMode':'pair-code','hardwareDriver':args.driver}
     (package/'connector.json').write_text(json.dumps(config,indent=2),encoding='utf-8')
-    access=('本包使用服务器授权的局域网免配对；是否允许接入由服务器决定。'
-            if args.connection_mode=='lan' else '本包使用采集器配对码；首次连接或凭证过期时，在教师端生成并填写采集器配对码。')
-    (package/'使用说明.txt').write_text(f'''SO-101 Windows 连接工具 V5
+    (package/'使用说明.txt').write_text(f'''SO-101 Windows 连接工具 V6（配对码连接）
 
 1. 关闭旧版工具，完整解压，在插着 USB 主臂的电脑运行 SO101-Leader.exe。
 2. 主界面可输入并保存服务器地址，支持 HTTP、HTTPS 和端口。默认地址：{server or '首次使用时填写'}。
 3. 添加这台主臂的 .robot.json 配置包或主臂校准 JSON，导入时保留配置包的 calibration 子目录。
 4. 驱动：{args.driver}。飞特 STS3215 使用 1000000 波特率，德晟 SE 使用 115200 波特率。
-5. {access}
+5. 到教师管理页选择体验台，生成“采集器配对码”，填写到工具主界面的配对码输入框，再点连接。不要使用浏览器配对码。
 6. 点击“连接机械臂”。每台臂独立保存校准和 USB 绑定；换臂先停止，再选择对应配置。
 7. 结束时点击“停止同步”。工具只读取主臂型号/位置，不写入舵机控制或校准参数。
 
-解压新版会保留服务器、机械臂编号和校准，采用本包明确配置的驱动与连接模式。
+首次配对或凭证过期时填写新码；有效凭证自动记住。新码只使用一次，不保存到配置文件。
+解压新版会保留服务器、机械臂编号和校准，改用采集器配对。输入框一直显示在主界面，无需展开设置。
 驱动或校准变更若触发服务器待确认，请在教师管理页核对后确认，再连接。
 已包含 Python 环境，不必另装 Python。包内不包含设备凭证、老师密码或个人校准文件。
 内置根证书仅用于 https://10.72.255.16:443 及对应 WSS；仍验证证书与主机名。
@@ -61,7 +60,18 @@ def main():
     state=json.loads(smoke.read_text(encoding='utf-8'))
     assert state['server']==server and state['driver']==args.driver
     assert state['autoConnect']==config['autoConnect'] and state['bundledCaLoaded'] is True
+    assert state['pairCodeOnMainWindow'] is True and 'V6' in state['title']
     assert not state['calibration'] and not state['profiles']
+    # Check the frozen UI against the old LAN settings that caused the hidden input.
+    legacy=work/'legacy-state';legacy.mkdir()
+    (legacy/'simple-connector.json').write_text(json.dumps({'server':server,'autoConnect':True,'connectionMode':'lan'}),encoding='utf-8')
+    legacy_smoke=work/'legacy-ui-smoke.json'
+    subprocess.run([str(package/'SO101-Leader.exe'),'--ui-smoke',str(legacy_smoke)],check=True,timeout=45,
+                   env=dict(os.environ,ISAAC_CONNECTOR_STATE_DIR=str(legacy)),cwd=package,
+                   creationflags=subprocess.CREATE_NO_WINDOW)
+    restored=json.loads(legacy_smoke.read_text(encoding='utf-8'))
+    assert restored['autoConnect'] is False and restored['pairCodeOnMainWindow'] is True
+    assert restored['server']==server and restored['driver']==args.driver
     out=ROOT/'web/downloads';out.mkdir(parents=True,exist_ok=True)
     archive=out/'so101-leader-windows.zip'
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as bundle:

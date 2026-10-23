@@ -40,8 +40,7 @@ async function refresh(){
     }
     for(const arm of latest.arms||[]){
       const row=document.createElement('article'),title=document.createElement('h4'),detail=document.createElement('pre');title.textContent=arm.armId+' · '+arm.driver;detail.textContent='当前校准 SHA-256：'+arm.calibrationHash;row.append(title,detail)
-      if(arm.pending){const pending=document.createElement('pre');pending.textContent='待确认校准 SHA-256：'+arm.pending.calibrationHash;row.append(pending)
-        const approve=document.createElement('button');approve.textContent='已核对设备与文件，使用新校准';approve.onclick=()=>run(async()=>{await api('arms/approve',{armId:arm.armId,calibrationHash:arm.pending.calibrationHash});await refresh()});row.append(approve)}
+      if(arm.pending){const pending=document.createElement('p');pending.textContent='旧版本留下的配置变更将在机械臂下次连接时自动更新。';row.append(pending)}
       $('arms').append(row)
     }
     for(const client of latest.clients.filter(c=>c.role!=='teacher')){

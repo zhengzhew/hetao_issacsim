@@ -26,7 +26,8 @@ class ConfigTests(unittest.TestCase):
     def test_paired_release_overrides_legacy_lan_setting_and_preserves_arm(self):
         store=ConnectorConfig(self.package,self.state)
         saved=store.save('https://10.72.255.16',CALIBRATION,USB)
-        self.assertTrue(saved['autoConnect'])
+        saved.update({'autoConnect':True,'connectionMode':'lan'})
+        store.file.write_text(json.dumps(saved),encoding='utf-8')
         (self.package/'connector.json').write_text(json.dumps({'server':'','autoConnect':False,'connectionMode':'pair-code'}))
         updated=ConnectorConfig(self.package,self.state)
         self.assertFalse(updated.data['autoConnect'])
@@ -39,14 +40,15 @@ class ConfigTests(unittest.TestCase):
         for name in ('leader_arm_calibration.json','leader_arm_isaac_calibration.json'):(self.package/name).write_bytes(CALIBRATION.read_bytes())
         store=ConnectorConfig(self.package,self.state,downloads=self.package)
         self.assertEqual(store.data['calibration'],'');self.assertEqual(store.profiles(),[])
-    def test_explicit_lan_release_restores_enrollment_after_paired_build(self):
+    def test_legacy_lan_package_cannot_restore_enrollment_in_v6(self):
         (self.package/'connector.json').write_text(json.dumps({'connectionMode':'pair-code'}))
         paired=ConnectorConfig(self.package,self.state)
         saved=paired.save('https://10.72.255.16',CALIBRATION,USB)
         self.assertFalse(saved['autoConnect'])
         (self.package/'connector.json').write_text(json.dumps({'connectionMode':'lan','hardwareDriver':'feetech-so101'}))
         lan=ConnectorConfig(self.package,self.state)
-        self.assertTrue(lan.data['autoConnect'])
+        self.assertFalse(lan.data['autoConnect'])
+        self.assertEqual(lan.data['connectionMode'],'pair-code')
         self.assertEqual(lan.data['driver'],'feetech-so101')
         self.assertEqual(lan.data['armId'],saved['armId'])
         self.assertEqual(lan.data['server'],saved['server'])

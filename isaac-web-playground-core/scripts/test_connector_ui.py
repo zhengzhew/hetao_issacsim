@@ -28,7 +28,8 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(len(self.calls),1);command=self.calls[0]
         self.assertEqual(command[command.index('--port')+1],'COM20')
         self.assertEqual(command[command.index('--server')+1],'http://server:8080')
-        self.assertIn('--state-dir',command);self.assertIn('--auto-connect',command);self.assertNotIn('--pair-code',command)
+        self.assertIn('--state-dir',command);self.assertNotIn('--auto-connect',command);self.assertNotIn('--pair-code',command)
+        self.assertEqual(self.window.pair_row.winfo_manager(),'pack')
         self.assertEqual(str(self.window.connect_button['state']),'disabled')
     def test_stop_requests_worker_exit_and_restores_connect_button(self):
         self.window.connect();self.window.stop_button.invoke();self.assertTrue(self.window.stop_path.exists())
@@ -45,7 +46,10 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(self.window.status.get(),'请更新配对码')
     def test_upgrade_from_lan_shows_pair_code_and_worker_uses_it(self):
         self.window.close()
-        (self.base/'connector.json').write_text(json.dumps({'connectionMode':'pair-code','autoConnect':False,'hardwareDriver':'feetech-so101'}))
+        legacy=json.loads(self.config.file.read_text(encoding='utf-8'))
+        legacy.update({'connectionMode':'lan','autoConnect':True})
+        self.config.file.write_text(json.dumps(legacy),encoding='utf-8')
+        (self.base/'connector.json').write_text(json.dumps({'connectionMode':'lan','autoConnect':True,'hardwareDriver':'feetech-so101'}))
         self.config=ConnectorConfig(self.base,self.base/'user')
         self.root=tk.Tk();self.root.withdraw()
         def spawn(command,**kwargs):self.calls.append(command);return self.child
@@ -64,6 +68,11 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(command[command.index('--pair-code')+1],'TEST-COLLECTOR-CODE')
         self.assertEqual(self.window.pair_code.get(),'')
         self.assertNotIn('TEST-COLLECTOR-CODE',self.config.file.read_text(encoding='utf-8'))
+    def test_gui_never_passes_lan_flag_even_if_old_setting_is_restored_in_memory(self):
+        self.config.data['autoConnect']=True
+        self.window.connect()
+        self.assertNotIn('--auto-connect',self.calls[0])
+        self.assertEqual(self.window.pair_row.winfo_manager(),'pack')
     def test_selected_station_is_saved_and_used_in_next_connection(self):
         choices=[{'id':'one','name':'一号'},{'id':'two','name':'二号'}]
         self.window.consume_event({'event':'station-required','stations':choices,'message':'请选择体验台'})
