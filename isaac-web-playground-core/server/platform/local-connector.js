@@ -10,9 +10,26 @@ function ipv4(address) {
   if (parts.length !== 4 || parts.some(p => !/^\d{1,3}$/.test(p) || Number(p) > 255)) return null
   return parts.reduce((value, part) => ((value << 8) | Number(part)) >>> 0, 0)
 }
+function intranetHost(origin) {
+  if (!origin) return true
+  let host
+  try { host = new URL(origin).hostname } catch { return false }
+  const value = ipv4(host)
+  if (value === null) return host === 'localhost'
+  // RFC1918, loopback and CGNAT: never a public-facing deployment.
+  return (value >>> 24) === 10 || (value >>> 20) === 0xac1 || (value >>> 16) === 0xc0a8
+      || (value >>> 24) === 127 || (value >>> 21) === 0x322
+}
+export function localConnectorEnabled(config) {
+  if (!config.localConnector?.enabled) return false
+  // A public origin would let a reverse-proxied client look local, so keep
+  // pairing-free to intranet addresses. Proxied and browser requests are still
+  // rejected below even when this is on.
+  return intranetHost(config.publicOrigin)
+}
 export function assertLocalConnector(req, config, interfaces = os.networkInterfaces()) {
   const policy = config.localConnector
-  if (!policy?.enabled || config.publicOrigin) throw new AccessError('此服务器未启用局域网免配对', 403)
+  if (!localConnectorEnabled(config)) throw new AccessError('此服务器未启用局域网免配对', 403)
   // Native clients only. A browser must retain its existing role and station.
   if (req.headers.origin || Object.keys(req.headers).some(key => key.startsWith('sec-fetch-'))) {
     throw new AccessError('浏览器请使用原有登录和体验台配对', 403)

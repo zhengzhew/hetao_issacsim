@@ -17,9 +17,11 @@ DATA = Path("/srv/hetao-isaac")
 
 
 def public_ip(value):
+    # Address store browsers use to reach this host. Public IPv4 for the ACME
+    # path, or a routed private/VPN IPv4 when the site has no inbound internet.
     address = ipaddress.ip_address(value.strip())
-    if address.version != 4 or not address.is_global:
-        raise ValueError("No public IPv4 assigned to this instance")
+    if address.version != 4 or address.is_unspecified or address.is_multicast:
+        raise ValueError("A reachable IPv4 address is required")
     return str(address)
 
 

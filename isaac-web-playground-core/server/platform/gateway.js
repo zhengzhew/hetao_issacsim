@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import {WebSocketServer, WebSocket} from 'ws'
 import {AccessStore,AccessError,requestToken,checkOrigin,allowed} from './access.js'
-import {assertLocalConnector,checkLanCredential} from './local-connector.js'
+import {assertLocalConnector,checkLanCredential,localConnectorEnabled} from './local-connector.js'
 import {createStreamProxy} from './stream-proxy.js'
 const json=(res,status,value,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(value))}
 async function body(req) {
@@ -66,7 +66,7 @@ export function createGateway({config,root,directory,store:givenStore,workerKey}
       const url=new URL(req.url,'http://gateway'),pathname=url.pathname
       checkOrigin(req,config.publicOrigin)
       if(pathname==='/health')return json(res,200,{ok:true,service:'isaac-platform'})
-      if(pathname==='/platform/config')return json(res,200,{managed:true,localConnectorEnabled:config.localConnector?.enabled===true&&!config.publicOrigin})
+      if(pathname==='/platform/config')return json(res,200,{managed:true,localConnectorEnabled:localConnectorEnabled(config)})
       if(pathname==='/login'||pathname==='/manage'||pathname==='/platform-ui.js') {
         const file=pathname==='/platform-ui.js'?'platform-ui.js':'platform.html'
         res.writeHead(200,{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-store'})

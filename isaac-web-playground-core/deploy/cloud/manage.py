@@ -69,10 +69,22 @@ def initialize(directory, host, gpu="0", accept_eula=False):
     return config
 
 
+def interface_for(address):
+    report = subprocess.run(["ip", "-4", "-o", "addr", "show"], capture_output=True, text=True, check=True).stdout
+    for line in report.splitlines():
+        parts = line.split()
+        # "2: eth0    inet 10.72.255.16/24 brd 10.72.255.255 scope global eth0"
+        if len(parts) < 4 or parts[2] != "inet":
+            continue
+        if parts[3].split("/")[0] == str(address):
+            return parts[1].rstrip(":")
+    raise ValueError(f"No network interface holds {address}")
+
+
 def configure_public(directory, host):
     address = ipaddress.ip_address(host)
-    if address.version != 4 or not address.is_global:
-        raise ValueError("Use this server's public IPv4 address")
+    if address.version != 4 or address.is_unspecified or address.is_multicast:
+        raise ValueError("Use this server's reachable IPv4 address")
     config_path = directory / "platform.json"
     original = config_path.read_text(encoding="utf-8")
     config = json.loads(original)
@@ -83,22 +95,38 @@ def configure_public(directory, host):
         with backup.open("x", encoding="utf-8") as handle:
             handle.write(original)
         backup.chmod(0o600)
-    config.update(host="127.0.0.1", publicOrigin=f"https://{address}", secureCookies=True, proxyStreaming=True)
-    config["localConnector"] = {"enabled": False}
+    if address.is_global:
+        # Internet-facing: loopback gateway behind the HTTPS edge, pairing required.
+        config.update(host="127.0.0.1", publicOrigin=f"https://{address}", secureCookies=True, proxyStreaming=True)
+        config["localConnector"] = {"enabled": False}
+    else:
+        # Intranet only: gateway must also answer direct LAN connections so the
+        # arm connector can use pairing-free without crossing the HTTPS proxy.
+        config.update(host="0.0.0.0", publicOrigin=f"https://{address}", secureCookies=True, proxyStreaming=True)
+        config["localConnector"] = {"enabled": True, "interfaces": [interface_for(address)]}
     for station in config["stations"]:
         station.update(streamHost=str(address), publicIp=str(address))
     for folder in ("edge/data", "edge/config"):
         (directory / folder).mkdir(parents=True, exist_ok=True, mode=0o700)
-    caddy = ("{\n    default_sni " + str(address) + "\n    servers {\n        protocols h1 h2\n    }\n}\n\n" + str(address) + " {\n"
-             "    tls {\n        issuer acme {\n"
-             "            dir https://acme-v02.api.letsencrypt.org/directory\n"
-             "            profile shortlived\n            disable_tlsalpn_challenge\n        }\n    }\n"
+    if address.is_global:
+        tls_block = ("    tls {\n        issuer acme {\n"
+                     "            dir https://acme-v02.api.letsencrypt.org/directory\n"
+                     "            profile shortlived\n            disable_tlsalpn_challenge\n        }\n    }\n")
+    else:
+        # No inbound internet: sign with Caddy's local CA instead of ACME.
+        tls_block = "    tls internal\n"
+    caddy = ("{\n    default_sni " + str(address) + "\n    servers {\n        protocols h1 h2\n    }\n}\n\n"
+             + str(address) + " {\n" + tls_block +
              "    header X-Content-Type-Options nosniff\n"
              f"    reverse_proxy 127.0.0.1:{config['port']}\n" + "}\n")
     (directory / "Caddyfile").write_text(caddy, encoding="utf-8")
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Public configuration prepared: https://{address}/")
-    print("Requires inbound TCP 80 for ACME; TCP 443 and station UDP media ports for clients.")
+    if address.is_global:
+        print("Requires inbound TCP 80 for ACME; TCP 443 and station UDP media ports for clients.")
+    else:
+        print("Internal address: Caddy local CA signs the certificate; browsers must trust or bypass it.")
+        print(f"Arm connector pairing-free on the LAN; point it at http://{address}:{config['port']} (not the HTTPS URL).")
     print("No cloud security-group rules changed. Run up, then verify the real browser connection.")
     return config
 
